@@ -938,6 +938,7 @@ liq_median = df["liquidity_axis"].median()
 sus_mean   = df[SUS_COL].mean() if SUS_COL in df.columns else 0.0
 rnc_mean   = df["regional_network_count"].mean() if "regional_network_count" in df else 0.0
 all_states = sorted(df["State"].dropna().unique().tolist())
+compare_states = [s for s in all_states if s not in {"Indiana", "Iowa"}]
 highlight_states = [s for s in all_states if s not in {"Indiana", "Iowa"}]
 
 def cities_for(state: str) -> list[str]:
@@ -948,8 +949,12 @@ def _default(key: str, value: str) -> None:
     if key not in st.session_state:
         st.session_state[key] = value
 
-_default("state_a", "Illinois" if "Illinois" in all_states else all_states[0])
-_default("state_b", "Illinois" if "Illinois" in all_states else all_states[0])
+_default("state_a", "Illinois" if "Illinois" in compare_states else compare_states[0])
+_default("state_b", "Illinois" if "Illinois" in compare_states else compare_states[0])
+if st.session_state.get("state_a") not in compare_states:
+    st.session_state["state_a"] = compare_states[0]
+if st.session_state.get("state_b") not in compare_states:
+    st.session_state["state_b"] = compare_states[0]
 
 def on_state_a_change() -> None:
     c = cities_for(st.session_state["state_a"])
@@ -973,7 +978,7 @@ with st.sidebar:
 
     # ── City A ────────────────────────────────────────────────────────────────
     st.markdown('<span class="sb-lbl">City A 🔵</span>', unsafe_allow_html=True)
-    st.selectbox("State A", all_states, key="state_a",
+    st.selectbox("State A", compare_states, key="state_a",
                  on_change=on_state_a_change, label_visibility="collapsed")
     c_a = cities_for(st.session_state["state_a"])
     if st.session_state.get("city_a") not in c_a:
@@ -984,7 +989,7 @@ with st.sidebar:
 
     # ── City B ────────────────────────────────────────────────────────────────
     st.markdown('<span class="sb-lbl">City B 🟡</span>', unsafe_allow_html=True)
-    st.selectbox("State B", all_states, key="state_b",
+    st.selectbox("State B", compare_states, key="state_b",
                  on_change=on_state_b_change, label_visibility="collapsed")
     c_b = cities_for(st.session_state["state_b"])
     if st.session_state.get("city_b") not in c_b:
@@ -1037,11 +1042,14 @@ st.markdown(
 )
 
 # ── KPI strip ─────────────────────────────────────────────────────────────────
-k_cols = st.columns(3)
+sus_a = float(r1.get(SUS_COL, 0) or 0) if r1 is not None and SUS_COL in r1 else 0.0
+sus_b = float(r2.get(SUS_COL, 0) or 0) if r2 is not None and SUS_COL in r2 else 0.0
+k_cols = st.columns(4)
 for col_w, (v, lbl) in zip(k_cols, [
     (str(len(df)),                               "Cities"),
     (str(df["State"].nunique()),                 "States"),
-    (f"{sus_mean:.1f}/48",                       "Avg Sustainability"),
+    (f"{sus_a:.1f}/48",                          f"{city1} Sustainability"),
+    (f"{sus_b:.1f}/48",                          f"{city2} Sustainability"),
 ]):
     with col_w:
         st.markdown(kpi_card(v, lbl), unsafe_allow_html=True)
