@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import warnings
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -117,8 +118,9 @@ SEC_COL: dict[str, str] = {
 FOCUS_SECTORS: list[str] = ["Energy", "Transport", "Waste"]
 
 # ── Fallback data path (when no file is uploaded) ─────────────────────────────
-DISK_FISCAL  = r"C:\Hrishitaa\projects\frontend\midwest data (1).xlsx"
-DISK_ACTIONS = r"C:\Hrishitaa\projects\frontend\municipality_actions.xlsx"
+BASE_DIR = Path(__file__).resolve().parent
+DISK_FISCAL  = BASE_DIR / "midwest data (1).xlsx"
+DISK_ACTIONS = BASE_DIR / "municipality_actions.xlsx"
 
 # ── Friendly axis/metric labels for municipality audiences ────────────────────
 FRIENDLY: dict[str, str] = {
@@ -863,7 +865,7 @@ def render_action_list(city_nm: str, acts: pd.DataFrame,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR — uploads + cascading state → city pickers
+# SIDEBAR — fixed data source + cascading state → city pickers
 # ══════════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
@@ -875,27 +877,16 @@ with st.sidebar:
     )
     st.divider()
 
-    st.markdown("### Data files")
-    fiscal_up  = st.file_uploader("📊 Fiscal & sustainability data (.xlsx)",
-                                   type=["xlsx", "xls"], key="fu")
-    actions_up = st.file_uploader("⚡ Climate actions data (.xlsx)",
-                                   type=["xlsx", "xls"], key="au")
-
-# ── Persist file bytes in session_state (use .getvalue(), not .read()) ────────
-if fiscal_up  is not None: st.session_state["fiscal_bytes"]  = fiscal_up.getvalue()
-if actions_up is not None: st.session_state["action_bytes"]  = actions_up.getvalue()
+    st.markdown("### Data source")
+    st.caption("Using fixed Excel files from the frontend folder.")
 
 # ── Load fiscal data ──────────────────────────────────────────────────────────
-fiscal_bytes = st.session_state.get("fiscal_bytes")
-if fiscal_bytes is None:
-    try:
-        with open(DISK_FISCAL, "rb") as fh:
-            fiscal_bytes = fh.read()
-        st.session_state["fiscal_bytes"] = fiscal_bytes
-    except FileNotFoundError:
-        st.info("⬅️  Upload your **Fiscal & sustainability data** Excel to get started.",
-                icon="📂")
-        st.stop()
+try:
+    with open(DISK_FISCAL, "rb") as fh:
+        fiscal_bytes = fh.read()
+except FileNotFoundError:
+    st.error(f"Fiscal file not found: {DISK_FISCAL}")
+    st.stop()
 
 try:
     df = load_fiscal(fiscal_bytes)
@@ -903,15 +894,13 @@ except Exception as exc:
     st.error(f"Could not read fiscal data: {exc}")
     st.stop()
 
-# ── Load actions (optional, auto-load from disk if present) ──────────────────
-action_bytes = st.session_state.get("action_bytes")
-if action_bytes is None:
-    try:
-        with open(DISK_ACTIONS, "rb") as fh:
-            action_bytes = fh.read()
-        st.session_state["action_bytes"] = action_bytes
-    except FileNotFoundError:
-        pass
+# ── Load actions (fixed file from disk) ───────────────────────────────────────
+action_bytes = None
+try:
+    with open(DISK_ACTIONS, "rb") as fh:
+        action_bytes = fh.read()
+except FileNotFoundError:
+    st.warning(f"Actions file not found: {DISK_ACTIONS}")
 
 df_act: Optional[pd.DataFrame] = None
 if action_bytes:
