@@ -84,9 +84,10 @@ Streamlit prints a local URL (usually `http://localhost:8501`). Open it in your 
 
 ## How to use the app
 
-1. In the **sidebar**, choose **State** and **City** for **City A** and **City B** (used across compare tabs).
-2. Use **Map options** to toggle bubble scaling, labels, quadrant shading, and state highlighting.
-3. Open **How Can Cities Improve?** to see **peer benchmarks** and sector pies for each side; expand **How is Overall Fiscal Health calculated?** for a plain-language definition of the fiscal index.
+1. In the **sidebar**, under **Compare cities**, pick **State** and **City** for **City A** and **City B** (used when you are comparing two places).
+2. Under **Dashboard view**, choose **Compare City A & City B** (default), **City A only**, **City B only**, or **Single city — Illinois, Michigan, Minnesota, or Wisconsin**. The last option shows **Focus state** and **Focus city** dropdowns (only those four states). **Single-city modes** show that municipality alone on **every** tab (typology highlight, profiles, actions, peer improvement, etc.).
+3. Use **Map options** to toggle bubble scaling, labels, quadrant shading, and state highlighting.
+4. Open **How Can Cities Improve?** for peer benchmarks; in single-city mode there is one panel (no City A / B sub-tabs). Expand **How is Overall Fiscal Health calculated?** for the fiscal index definition.
 
 ---
 
@@ -115,23 +116,3 @@ frontend/
 
 ---
 
-## Troubleshooting
-
-| Issue | What to try |
-|--------|-------------|
-| **`ModuleNotFoundError: plotly`** (or other packages) | Install with the **same Python** that runs Streamlit: `python -m pip install -r requirements.txt` or `py -3.12 -m pip install plotly`. |
-| **`TypeError` / duplicate keyword in Plotly** | Upgrade to the current `dashboard.py` from this repo; Plotly layout merges are handled for nested charts. |
-| **Empty actions** | Confirm sheet name / columns; cities must match fiscal data **city + state** (case-insensitive after normalization). |
-
----
-
-## Development notes
-
-- **Caching:** Fiscal and actions loaders use `@st.cache_data` keyed by file bytes, so restarting the app or changing files picks up updates cleanly.
-- **Styling:** Heavy use of `st.markdown(..., unsafe_allow_html=True)` and embedded CSS for cards, badges, and typography—edit the `<style>` block at the top of `dashboard.py` for global look-and-feel.
-
----
-
-## License
-
-If this frontend sits inside a larger **CLEAN** repository, inherit that project’s license and contribution guidelines; otherwise add a `LICENSE` file as appropriate for your organization.
