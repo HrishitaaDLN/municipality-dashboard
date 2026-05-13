@@ -2,14 +2,18 @@
 Municipal Fiscal & Sustainability Dashboard
 Midwest Municipalities · Fiscal Typology · Climate Actions
 
+Setup and data files: see README.md in this folder.
+
 Run:
-    pip install streamlit plotly scikit-learn openpyxl
-    streamlit run fiscal_dashboard.py
+    pip install -r requirements.txt
+    streamlit run dashboard.py
 """
 
 from __future__ import annotations
 
+import html
 import io
+import re
 import warnings
 from pathlib import Path
 from typing import Optional
@@ -116,6 +120,7 @@ SEC_COL: dict[str, str] = {
     "Other":       "#475569",
 }
 FOCUS_SECTORS: list[str] = ["Energy", "Transport", "Waste"]
+ACTION_PAGE_SIZE: int = 12
 
 # ── Fallback data path (when no file is uploaded) ─────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
@@ -541,6 +546,15 @@ def mrow(label: str, value: str) -> str:
     return f'<div class="mrow"><span class="ml">{label}</span><span class="mv">{value}</span></div>'
 
 
+def markdown_bold_to_html(text: str) -> str:
+    """Turn **segments** into <strong> for HTML callouts (Markdown is not applied inside raw HTML)."""
+
+    def _repl(match: re.Match[str]) -> str:
+        return "<strong>" + html.escape(match.group(1)) + "</strong>"
+
+    return re.sub(r"\*\*(.+?)\*\*", _repl, text)
+
+
 def base_chart_layout(**overrides) -> dict:
     layout = dict(
         paper_bgcolor="#080c18",
@@ -846,17 +860,23 @@ def render_full_profile(row: pd.Series, accent: str,
         st.plotly_chart(fig, use_container_width=True, key=f"fin_profile_bar_{key_suffix}")
 
 
-def render_action_list(city_nm: str, acts: pd.DataFrame,
-                       sel_sectors: list[str]) -> None:
-    """Render filtered action cards for one city."""
+def render_action_list(
+    city_nm: str,
+    acts: pd.DataFrame,
+    sel_sectors: list[str],
+    *,
+    list_state_key: str,
+) -> None:
+    """Render filtered action cards for one city (paginated when the list is long)."""
     filtered = (
         acts[acts["sector"].isin(sel_sectors)]
         if sel_sectors and "sector" in acts.columns
         else acts
     )
 
+    n_all = len(filtered)
     st.markdown(
-        f'<div class="sec-lbl">{city_nm} &nbsp;·&nbsp; {len(filtered)} actions</div>',
+        f'<div class="sec-lbl">{city_nm} &nbsp;·&nbsp; {n_all} actions</div>',
         unsafe_allow_html=True,
     )
 
@@ -873,7 +893,39 @@ def render_action_list(city_nm: str, acts: pd.DataFrame,
             st.caption("No actions match the selected sectors.")
         return
 
-    for _, row in filtered.iterrows():
+    page_key = f"_alpage_{list_state_key}"
+    sig_key = f"_alsig_{list_state_key}"
+    sig_val = (tuple(sorted(sel_sectors or [])), n_all)
+    if st.session_state.get(sig_key) != sig_val:
+        st.session_state[sig_key] = sig_val
+        st.session_state[page_key] = 0
+
+    n_pages = max(1, (n_all + ACTION_PAGE_SIZE - 1) // ACTION_PAGE_SIZE)
+    page = int(st.session_state.get(page_key, 0))
+    page = max(0, min(page, n_pages - 1))
+    st.session_state[page_key] = page
+
+    start = page * ACTION_PAGE_SIZE
+    end = min(start + ACTION_PAGE_SIZE, n_all)
+    page_df = filtered.iloc[start:end]
+
+    if n_pages > 1:
+        st.caption(f"Showing actions {start + 1}–{end} of {n_all} · Page {page + 1} of {n_pages}")
+        p1, p2, p3 = st.columns([1, 2, 1])
+        with p1:
+            if st.button("◀ Prev", key=f"{list_state_key}_prev", disabled=page <= 0):
+                st.session_state[page_key] = page - 1
+                st.rerun()
+        with p3:
+            if st.button(
+                "Next ▶",
+                key=f"{list_state_key}_next",
+                disabled=page >= n_pages - 1,
+            ):
+                st.session_state[page_key] = page + 1
+                st.rerun()
+
+    for _, row in page_df.iterrows():
         name   = row.get("action_name", "")
         text   = row.get("action", "")
         sector = str(row.get("sector", "Other"))
@@ -1070,14 +1122,14 @@ def render_improvement_benchmark_for_city(
             f"{city_nm}, {state_nm}</p>",
             unsafe_allow_html=True,
         )
-        render_action_list(f"{city_nm}, {state_nm}", acts_f, sector_filter)
+        render_action_list(f"{city_nm}, {state_nm}", acts_f, sector_filter, list_state_key=f"improve_act_f_{chart_key_suffix}")
     with c_right:
         st.markdown(
             f'<p style="color:{accent_bench};font-weight:600;margin-bottom:6px">'
             f"{bench_label}</p>",
             unsafe_allow_html=True,
         )
-        render_action_list(bench_label, acts_b, sector_filter)
+        render_action_list(bench_label, acts_b, sector_filter, list_state_key=f"improve_act_b_{chart_key_suffix}")
 
     st.markdown("### Where policies and programs diverge")
     diff_lines: list[str] = []
@@ -1125,10 +1177,11 @@ def render_improvement_benchmark_for_city(
                 )
 
     if diff_lines:
+        body = "<br>".join(markdown_bold_to_html(line) for line in diff_lines)
         st.markdown(
             '<div style="border-left:4px solid #34d399;padding:10px 14px;margin:12px 0;'
-            'background:#0f172a;border-radius:0 8px 8px 0">'
-            + "<br>".join(diff_lines)
+            'background:#0f172a;border-radius:0 8px 8px 0;line-height:1.65">'
+            + body
             + "</div>",
             unsafe_allow_html=True,
         )
@@ -1147,7 +1200,6 @@ def render_improvement_benchmark_for_city(
         f"**{sus_b - sus_f:.1f}** sustainability points. That gap usually reflects "
         f"**governance, planning, data practices, and climate programs** in the rubric, "
         f"not a materially “richer” city in this financial snapshot.",
-        unsafe_allow_html=True,
     )
 
     st.markdown("### Key performance drivers and strategic advantages")
@@ -1839,9 +1891,9 @@ with T3:
         st.markdown("### Side-by-side actions")
         la1, la2 = st.columns(2)
         with la1:
-            render_action_list(f"{city1}, {state1}", a1, sel_secs)
+            render_action_list(f"{city1}, {state1}", a1, sel_secs, list_state_key="t3_actions_city_a")
         with la2:
-            render_action_list(f"{city2}, {state2}", a2, sel_secs)
+            render_action_list(f"{city2}, {state2}", a2, sel_secs, list_state_key="t3_actions_city_b")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 4  ·  CITY PROFILES
