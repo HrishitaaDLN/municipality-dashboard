@@ -130,6 +130,29 @@ FRIENDLY: dict[str, str] = {
     "pca_2x2_type":     "Fiscal Cluster",
 }
 
+# ── Plain-language: how `fiscal_health` is built (see load_fiscal) ────────────
+FISCAL_HEALTH_EXPLAINER_MD = """
+**What this number is**  
+The **Overall Fiscal Health** value is a *peer index*: it summarizes how this city compares to **other cities in the same spreadsheet** across the financial columns we have (not a dollar total and not a bond rating).
+
+**What inputs we use (everyday wording)**  
+Typical fields include **cash and investment coverage**, **financial slack**, **debt levels and debt service**, **pension and OPEB exposure**, **capital intensity**, **infrastructure burden per resident**, **restricted-fund rigidity**, **liability pressure**, **asset coverage**, and similar balance-sheet and budget-stress measures—whatever columns are present in your uploaded Midwest file.
+
+**How it is calculated**  
+1. Missing values are filled with the **column median** so one blank field does not drop a city.  
+2. For indicators where a *higher raw number means worse stress*, we **flip the sign** so that, everywhere, **larger = financially stronger** on that line item.  
+3. Each column is **standardized** (compared to the dataset mean and spread) so large and small cities are judged on the same scale.  
+4. **Overall Fiscal Health** is the **average** of those standardized values for that city.
+
+**How to read the score**  
+- **Near 0** — close to the **typical** city in this sample.  
+- **Positive** — **stronger than average** on balance across the combined indicators.  
+- **Negative** — **weaker than average** on balance.  
+
+Because it is an average of standardized columns, most cities land in a **narrow band** around zero; small gaps (for example 0.29 vs 0.32) mean “very similar overall financial position in this dataset,” which is why we use it to pick fair sustainability peers.
+""".strip()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CSS / THEME  — FIXED HIGH-CONTRAST VERSION
 # ══════════════════════════════════════════════════════════════════════════════
@@ -710,7 +733,7 @@ def render_city_card(row: pd.Series, accent: str) -> None:
         {mrow("Sustainability Score",sus_str)}
         {mrow("Pension Health",      f"{row.get('PC1_pension_axis', 0):.2f}")}
         {mrow("Cash Liquidity",      f"{row.get('liquidity_axis', 0):.2f}")}
-        {mrow("Overall Fiscal Health", f"{row.get('fiscal_health', 0):.2f}")}
+        {mrow("Overall Fiscal Health (vs. peers)", f"{row.get('fiscal_health', 0):.2f}")}
         {mrow("Regional Networks",   str(rnc))}
         {mrow("Climate Memberships", str(cnc))}
         {mrow("Commission Authority",COMM_LBL.get(cl, f"Level {cl}"))}
@@ -764,7 +787,7 @@ def render_full_profile(row: pd.Series, accent: str,
     for fld, flbl in [
         ("PC1_pension_axis", "Pension Health Score"),
         ("liquidity_axis",   "Cash Liquidity Score"),
-        ("fiscal_health",    "Overall Fiscal Health"),
+        ("fiscal_health",    "Overall Fiscal Health (vs. peers)"),
     ]:
         st.markdown(mrow(flbl, f"{row.get(fld, 0):.2f}"), unsafe_allow_html=True)
 
@@ -862,6 +885,370 @@ def render_action_list(city_nm: str, acts: pd.DataFrame,
             f'</div>',
             unsafe_allow_html=True,
         )
+
+
+def render_focus_sector_pie(
+    acts: pd.DataFrame,
+    title_line: str,
+    accent: str,
+    plot_key: str,
+) -> None:
+    """Donut chart: counts of Energy, Transport, Waste actions (FOCUS_SECTORS order)."""
+    st.markdown(
+        f'<p style="color:{accent};font-weight:600;margin-bottom:4px">{title_line}</p>',
+        unsafe_allow_html=True,
+    )
+    if acts.empty or "sector" not in acts.columns:
+        vc = pd.Series(0, index=FOCUS_SECTORS, dtype=int)
+    else:
+        vc = acts["sector"].value_counts().reindex(FOCUS_SECTORS, fill_value=0).astype(int)
+    total = int(vc.sum())
+    st.caption(
+        " · ".join(f"{s}: {int(vc[s])}" for s in FOCUS_SECTORS)
+        + f" — {total} total in these sectors"
+    )
+    labels = [s for s in FOCUS_SECTORS if int(vc[s]) > 0]
+    vals = [int(vc[s]) for s in labels]
+    if total == 0:
+        st.caption("No actions on record for this city in the dataset.")
+        return
+    fig_p = go.Figure(go.Pie(
+        labels=labels,
+        values=vals,
+        hole=0.52,
+        marker_colors=[SEC_COL.get(s, "#475569") for s in labels],
+        textinfo="label+value",
+        textposition="outside",
+        textfont=dict(size=10, color="#e2e8f0"),
+        hovertemplate="%{label}: %{value} actions (%{percent})<extra></extra>",
+    ))
+    fig_p.update_layout(
+        **base_chart_layout(height=260, margin=dict(l=8, r=8, t=8, b=8)),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_p, use_container_width=True, key=plot_key)
+
+
+def pick_fiscal_peer_benchmark(dframe: pd.DataFrame, focal: pd.Series) -> Optional[pd.Series]:
+    """
+    Choose a benchmark municipality with similar Overall Fiscal Health index
+    (`fiscal_health`: peer-average financial indicators) but a meaningfully
+    higher sustainability total score.
+    """
+    if focal is None or SUS_COL not in dframe.columns:
+        return None
+    fh_t = float(pd.to_numeric(focal.get("fiscal_health"), errors="coerce") or 0.0)
+    sus_t = float(pd.to_numeric(focal.get(SUS_COL), errors="coerce") or 0.0)
+    fh_std = float(dframe["fiscal_health"].std() or 0.25)
+    if np.isnan(fh_std) or fh_std < 1e-6:
+        fh_std = 0.25
+
+    m_self = (dframe["city"] == focal["city"]) & (dframe["State"] == focal["State"])
+    pool = dframe.loc[~m_self].copy()
+    if pool.empty:
+        return None
+
+    pool["_dfh"] = (
+        pd.to_numeric(pool["fiscal_health"], errors="coerce").fillna(0.0) - fh_t
+    ).abs()
+    pool["_sus"] = pd.to_numeric(pool[SUS_COL], errors="coerce").fillna(0.0)
+
+    for mult in (0.28, 0.42, 0.6, 0.85, 1.15, 1.55, 2.2, 3.5, 1e9):
+        band = mult * fh_std
+        near = pool[pool["_dfh"] <= band]
+        better = near[near["_sus"] > sus_t + 0.08]
+        if not better.empty:
+            ix = better.sort_values(["_dfh", "_sus"], ascending=[True, False]).index[0]
+            return dframe.loc[ix]
+
+    better_all = pool[pool["_sus"] > sus_t + 0.08]
+    if not better_all.empty:
+        ix = better_all.sort_values(["_dfh", "_sus"], ascending=[True, False]).index[0]
+        return dframe.loc[ix]
+    return None
+
+
+def _comm_level(row: pd.Series) -> int:
+    for k in ("commission_authority_level ", "commission_authority_level"):
+        if k in row.index:
+            return int(pd.to_numeric(row.get(k), errors="coerce") or 0)
+    return 0
+
+
+def render_improvement_benchmark_for_city(
+    focal: Optional[pd.Series],
+    city_nm: str,
+    state_nm: str,
+    accent_sel: str,
+    accent_bench: str,
+    sector_filter: list[str],
+    chart_key_suffix: str,
+) -> None:
+    """Peer-learning panel: focal city vs. a higher-scoring, fiscally similar benchmark."""
+    if focal is None:
+        st.warning(f"**{city_nm}, {state_nm}** not found in the dataset.")
+        return
+
+    bench = pick_fiscal_peer_benchmark(df, focal)
+    if bench is None:
+        st.info(
+            f"No benchmark peer found for **{city_nm}** with a higher sustainability score "
+            "in this dataset. Try another city, or this city may already rank at the top "
+            "among comparable fiscal peers."
+        )
+        return
+
+    fh_f = float(focal.get("fiscal_health", 0) or 0)
+    fh_b = float(bench.get("fiscal_health", 0) or 0)
+    sus_f = float(focal.get(SUS_COL, 0) or 0)
+    sus_b = float(bench.get(SUS_COL, 0) or 0)
+    dfh = abs(fh_b - fh_f)
+    bench_label = f'{bench["city"]}, {bench.get("State", "")}'
+
+    st.markdown(
+        f'<div class="info-banner" style="margin-bottom:14px">'
+        f"<b>Benchmark peer:</b> {bench_label}<br>"
+        f"<span style='opacity:.92'>Matched because both cities sit in a <b>similar "
+        f"Overall Fiscal Health</b> band—that index compares each city to the "
+        f"<b>dataset average</b> on cash, debt, pensions, capital burden, and related "
+        f"financial fields (see <i>How is Overall Fiscal Health calculated?</i> above). "
+        f"<b>{bench['city']}</b> index <b>{fh_b:.2f}</b> · <b>{city_nm}</b> "
+        f"<b>{fh_f:.2f}</b> (difference {dfh:.2f}; small gap = similar financial "
+        f"position among peers here). The benchmark still earns a higher "
+        f"<b>sustainability</b> score: <b>{sus_b:.1f}/48</b> vs "
+        f"<b>{sus_f:.1f}/48</b>.</span></div>",
+        unsafe_allow_html=True,
+    )
+
+    k1, k2, k3 = st.columns(3)
+    with k1:
+        st.markdown(
+            kpi_card(f"{sus_f:.1f}/48", f"{city_nm} — sustainability", accent_sel, "1.25rem"),
+            unsafe_allow_html=True,
+        )
+    with k2:
+        st.markdown(
+            kpi_card(f"{sus_b:.1f}/48", "Benchmark — sustainability", accent_bench, "1.25rem"),
+            unsafe_allow_html=True,
+        )
+        with k3:
+            st.markdown(
+                kpi_card(f"+{sus_b - sus_f:.1f}", "Score gap (benchmark − selected)", "#34d399", "1.25rem"),
+                unsafe_allow_html=True,
+            )
+
+    acts_f = get_city_actions(city_nm, state_nm)
+    acts_b = get_city_actions(str(bench["city"]), str(bench.get("State", "")))
+
+    st.markdown("### Actions by sector (Energy, Transport, Waste)")
+    st.caption("Each pie shows how documented actions in the dataset split across the three sectors.")
+    pie_l, pie_r = st.columns(2)
+    with pie_l:
+        render_focus_sector_pie(
+            acts_f,
+            f"{city_nm}, {state_nm}",
+            accent_sel,
+            f"improve_pie_f_{chart_key_suffix}",
+        )
+    with pie_r:
+        render_focus_sector_pie(
+            acts_b,
+            bench_label,
+            accent_bench,
+            f"improve_pie_b_{chart_key_suffix}",
+        )
+
+    st.markdown("### Side-by-side climate actions")
+    st.caption(
+        "Documented Energy, Transport, and Waste measures from the actions dataset. "
+        "Use the sector filter in this tab to narrow the lists."
+    )
+    c_left, c_right = st.columns(2)
+    with c_left:
+        st.markdown(
+            f'<p style="color:{accent_sel};font-weight:600;margin-bottom:6px">'
+            f"{city_nm}, {state_nm}</p>",
+            unsafe_allow_html=True,
+        )
+        render_action_list(f"{city_nm}, {state_nm}", acts_f, sector_filter)
+    with c_right:
+        st.markdown(
+            f'<p style="color:{accent_bench};font-weight:600;margin-bottom:6px">'
+            f"{bench_label}</p>",
+            unsafe_allow_html=True,
+        )
+        render_action_list(bench_label, acts_b, sector_filter)
+
+    st.markdown("### Where policies and programs diverge")
+    diff_lines: list[str] = []
+    for sc_col, sc_lbl, sc_max in SUS_SUBS:
+        if sc_col not in focal.index or sc_col not in bench.index:
+            continue
+        vf, vb = float(focal.get(sc_col, 0) or 0), float(bench.get(sc_col, 0) or 0)
+        if vb > vf + 0.5:
+            diff_lines.append(
+                f"**{sc_lbl.split('(')[0].strip()}**: benchmark scores **{vb:.0f}/{sc_max}** "
+                f"vs **{vf:.0f}/{sc_max}** for {city_nm} — stronger documented maturity in "
+                f"this pillar."
+            )
+    c_f, c_b = _comm_level(focal), _comm_level(bench)
+    if c_b > c_f:
+        diff_lines.append(
+            f"**Governance / formal authority**: benchmark has **{COMM_LBL.get(c_b, str(c_b))}** "
+            f"for its sustainability commission vs **{COMM_LBL.get(c_f, str(c_f))}** for {city_nm}."
+        )
+    cn_f = int(pd.to_numeric(focal.get("climate_network_count"), errors="coerce") or 0)
+    cn_b = int(pd.to_numeric(bench.get("climate_network_count"), errors="coerce") or 0)
+    if cn_b > cn_f:
+        diff_lines.append(
+            f"**Climate networks**: benchmark participates in **{cn_b}** tracked memberships "
+            f"vs **{cn_f}** for {city_nm}, signalling broader multi-city learning and visibility."
+        )
+    rn_f = int(pd.to_numeric(focal.get("regional_network_count"), errors="coerce") or 0)
+    rn_b = int(pd.to_numeric(bench.get("regional_network_count"), errors="coerce") or 0)
+    if rn_b > rn_f:
+        diff_lines.append(
+            f"**Regional collaboration**: **{rn_b}** regional network ties vs **{rn_f}** — "
+            "often associated with shared resources and implementation support."
+        )
+
+    if (("sector" in acts_f.columns and not acts_f.empty)
+            or ("sector" in acts_b.columns and not acts_b.empty)):
+        sf = acts_f["sector"].value_counts() if "sector" in acts_f.columns else pd.Series(dtype=int)
+        sb = acts_b["sector"].value_counts() if "sector" in acts_b.columns else pd.Series(dtype=int)
+        for sec in FOCUS_SECTORS:
+            nf, nb = int(sf.get(sec, 0)), int(sb.get(sec, 0))
+            if nb > nf:
+                diff_lines.append(
+                    f"**{sec} actions**: benchmark lists **{nb}** documented items vs **{nf}** "
+                    f"for {city_nm} in this dataset."
+                )
+
+    if diff_lines:
+        st.markdown(
+            '<div style="border-left:4px solid #34d399;padding:10px 14px;margin:12px 0;'
+            'background:#0f172a;border-radius:0 8px 8px 0">'
+            + "<br>".join(diff_lines)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.caption(
+            "No single dominant gap stands out in the automated comparison; see score "
+            "breakdown and recommendations below."
+        )
+
+    st.markdown("### Why the benchmark scores higher at similar fiscal capacity")
+    st.markdown(
+        f"The peer match uses the **Overall Fiscal Health** index described above "
+        f"(cash, debt, pensions, capital stress, etc., each compared to this dataset’s "
+        f"average—not population or income). **{bench_label}** and **{city_nm}** are only "
+        f"**{dfh:.2f}** index points apart, yet the benchmark leads by "
+        f"**{sus_b - sus_f:.1f}** sustainability points. That gap usually reflects "
+        f"**governance, planning, data practices, and climate programs** in the rubric, "
+        f"not a materially “richer” city in this financial snapshot.",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Key performance drivers and strategic advantages")
+    drivers: list[str] = []
+    gov_f = float(focal.get("Governance\n(/9)", 0) or 0)
+    gov_b = float(bench.get("Governance\n(/9)", 0) or 0)
+    da_f = float(focal.get("Data & Analytics\n(/21)", 0) or 0)
+    da_b = float(bench.get("Data & Analytics\n(/21)", 0) or 0)
+    ap_f = float(focal.get("Action Planning\n(/18)", 0) or 0)
+    ap_b = float(bench.get("Action Planning\n(/18)", 0) or 0)
+    pillars = [
+        ("Governance", gov_b - gov_f, gov_b),
+        ("Data & analytics", da_b - da_f, da_b),
+        ("Action planning", ap_b - ap_f, ap_b),
+    ]
+    pillars.sort(key=lambda x: x[1], reverse=True)
+    for name, gap, val_b in pillars:
+        if gap > 0.3:
+            drivers.append(
+                f"**{name}** (benchmark **{val_b:.0f}** pts in this block vs **{val_b - gap:.0f}** "
+                f"for {city_nm}): largest relative lift in the rubric."
+            )
+    if not drivers:
+        drivers.append(
+            "Gains are spread across pillars; the benchmark still leads on the **total** score "
+            "after matching fiscal capacity — review sub-scores above for nuance."
+        )
+    if cn_b > cn_f:
+        drivers.append(
+            "**Institutional embedding**: climate network participation often correlates with "
+            "structured reporting, targets, and staff capacity — areas reflected in the score."
+        )
+    st.markdown("\n".join(f"- {d}" for d in drivers))
+
+    fig_sub = go.Figure()
+    sub_lbls = ["Governance", "Data & analytics", "Action planning"]
+    sub_f = [gov_f, da_f, ap_f]
+    sub_b = [gov_b, da_b, ap_b]
+    fig_sub.add_trace(go.Bar(name=city_nm, x=sub_lbls, y=sub_f, marker_color=accent_sel, opacity=0.88))
+    fig_sub.add_trace(
+        go.Bar(name=bench["city"], x=sub_lbls, y=sub_b, marker_color=accent_bench, opacity=0.88)
+    )
+    _lay = base_chart_layout(height=300, margin=dict(l=40, r=15, t=28, b=45))
+    _leg = dict(_lay.get("legend") or {})
+    _leg.update(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1,
+    )
+    _lay["legend"] = _leg
+    fig_sub.update_layout(
+        **_lay,
+        barmode="group",
+        yaxis=dark_axis(title="Rubric points (raw)"),
+        xaxis=dict(tickfont=dict(size=11), gridcolor="#0f1e30"),
+    )
+    st.plotly_chart(fig_sub, use_container_width=True, key=f"bench_subscores_{chart_key_suffix}")
+
+    st.markdown("### Recommendations / suggested actions")
+    recs: list[str] = []
+    if gov_b > gov_f + 0.5:
+        recs.append(
+            f"**Governance**: Align commission scope and decision rights with **{bench['city']}**-style "
+            "practice (clear mandate, reporting cadence, documented authority level)."
+        )
+    if da_b > da_f + 0.5:
+        recs.append(
+            "**Data & analytics**: Publish inventories and metrics (energy, fleet, buildings) "
+            "and tie capital decisions to measurable baselines — typical of higher rubric scores."
+        )
+    if ap_b > ap_f + 0.5:
+        recs.append(
+            "**Action planning**: Refresh CAP milestones, interdepartmental owners, and "
+            "funding pathways; mirror the breadth of initiatives seen in the benchmark’s action list."
+        )
+    if c_b > c_f:
+        recs.append(
+            f"**Formal authority**: Explore moving the sustainability commission toward "
+            f"**{COMM_LBL.get(c_b, str(c_b)).lower()}**, matching the benchmark’s level."
+        )
+    if cn_b > cn_f:
+        recs.append(
+            "**Networks**: Join or deepen participation in national/regional climate networks "
+            "where the benchmark is active — use their toolkits and peer cohorts."
+        )
+    for sec in FOCUS_SECTORS:
+        nf = int(acts_f["sector"].value_counts().get(sec, 0)) if "sector" in acts_f.columns else 0
+        nb = int(acts_b["sector"].value_counts().get(sec, 0)) if "sector" in acts_b.columns else 0
+        if nb > nf:
+            recs.append(
+                f"**{sec}**: Add or document **{sec.lower()}** programs to close the gap "
+                f"({nf} vs {nb} listed actions)."
+            )
+    if not recs:
+        recs.append(
+            "Focus on **incremental rubric gains** across governance, data, and planning — "
+            "the benchmark leads overall; small systematic upgrades in each pillar often compound."
+        )
+    st.markdown("\n".join(f"{i}. {r}" for i, r in enumerate(recs, start=1)))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1048,11 +1435,12 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════════════════════════════════════════
-T1, T2, T3, T4 = st.tabs([
+T1, T2, T3, T4, T5 = st.tabs([
     "🗺️  Typology Map",
     "⚖️  City vs City",
     "⚡  Actions Explorer",
     "🔬  City Profiles",
+    "How Can Cities Improve?",
 ])
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1294,7 +1682,7 @@ with T2:
         for fc, fl in [
             ("PC1_pension_axis", "Pension Health"),
             ("liquidity_axis",   "Cash Liquidity"),
-            ("fiscal_health",    "Fiscal Health"),
+            ("fiscal_health",    "Fiscal index (vs. peers)"),
         ]:
             mn, mx = df[fc].min(), df[fc].max()
             r_lbls.append(fl)
@@ -1517,7 +1905,38 @@ with T4:
                 ))
         fig_bub.update_layout(
             **base_chart_layout(height=420, margin=dict(l=50, r=25, t=15, b=50)),
-            xaxis=dark_axis(title="Fiscal Health Score"),
+            xaxis=dark_axis(title="Overall Fiscal Health (peer index)"),
             yaxis=dark_axis(title="Sustainability Score (/48)"),
         )
         st.plotly_chart(fig_bub, use_container_width=True, key="bubble_all")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TAB 5  ·  HOW CAN CITIES IMPROVE?  (peer benchmarking)
+# ──────────────────────────────────────────────────────────────────────────────
+with T5:
+    st.markdown(
+        '<div class="info-banner">'
+        "<b>Peer learning & benchmarking</b><br>"
+        "Each sub-tab finds a municipality with a <b>similar Overall Fiscal Health</b> "
+        "index (see below) but a <b>higher sustainability score</b>, then compares climate "
+        "actions and score pillars so you can see what stronger peers do differently."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    with st.expander("How is Overall Fiscal Health calculated?", expanded=False):
+        st.markdown(FISCAL_HEALTH_EXPLAINER_MD)
+    sel_secs_improve = st.multiselect(
+        "Sectors to show in action lists",
+        FOCUS_SECTORS,
+        default=FOCUS_SECTORS,
+        key="t5_improve_sectors",
+    )
+    sub_a, sub_b = st.tabs(["City A", "City B"])
+    with sub_a:
+        render_improvement_benchmark_for_city(
+            r1, city1, state1, "#93c5fd", "#34d399", sel_secs_improve, "improve_a",
+        )
+    with sub_b:
+        render_improvement_benchmark_for_city(
+            r2, city2, state2, "#fbbf24", "#34d399", sel_secs_improve, "improve_b",
+        )
