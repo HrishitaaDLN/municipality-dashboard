@@ -117,8 +117,8 @@ SEC_COL: dict[str, str] = {
 FOCUS_SECTORS: list[str] = ["Energy", "Transport", "Waste"]
 
 # ── Fallback data path (when no file is uploaded) ─────────────────────────────
-DISK_FISCAL  = "/mnt/user-data/uploads/midwest_data__1_.xlsx"
-DISK_ACTIONS = "/mnt/user-data/uploads/municipality_actions.xlsx"
+DISK_FISCAL  = r"C:\Hrishitaa\projects\frontend\midwest data (1).xlsx"
+DISK_ACTIONS = r"C:\Hrishitaa\projects\frontend\municipality_actions.xlsx"
 
 # ── Friendly axis/metric labels for municipality audiences ────────────────────
 FRIENDLY: dict[str, str] = {
@@ -938,6 +938,7 @@ liq_median = df["liquidity_axis"].median()
 sus_mean   = df[SUS_COL].mean() if SUS_COL in df.columns else 0.0
 rnc_mean   = df["regional_network_count"].mean() if "regional_network_count" in df else 0.0
 all_states = sorted(df["State"].dropna().unique().tolist())
+highlight_states = [s for s in all_states if s not in {"Indiana", "Iowa"}]
 
 def cities_for(state: str) -> list[str]:
     return sorted(df[df["State"] == state]["city"].dropna().unique().tolist())
@@ -996,7 +997,7 @@ with st.sidebar:
     show_labels = st.checkbox("Show all city labels",        value=False, key="show_lbl")
     shade       = st.checkbox("Shade quadrant areas",        value=True,  key="shade")
     hl_states   = st.multiselect("Highlight state(s)",
-                                  all_states, default=[], key="hl_st")
+                                  highlight_states, default=[], key="hl_st")
 
 # ── Resolve selected rows (match on city + state to avoid duplicates) ─────────
 city1,  state1 = st.session_state["city_a"], st.session_state["state_a"]
@@ -1036,14 +1037,11 @@ st.markdown(
 )
 
 # ── KPI strip ─────────────────────────────────────────────────────────────────
-k_cols = st.columns(6)
+k_cols = st.columns(3)
 for col_w, (v, lbl) in zip(k_cols, [
     (str(len(df)),                               "Cities"),
     (str(df["State"].nunique()),                 "States"),
     (f"{sus_mean:.1f}/48",                       "Avg Sustainability"),
-    (f"{df['fiscal_health'].mean():.2f}",        "Avg Fiscal Health"),
-    (f"{df['climate_network_count'].mean():.1f}","Avg Climate Networks"),
-    (f"{rnc_mean:.1f}",                          "Avg Regional Networks"),
 ]):
     with col_w:
         st.markdown(kpi_card(v, lbl), unsafe_allow_html=True)
@@ -1064,6 +1062,17 @@ T1, T2, T3, T4 = st.tabs([
 # TAB 1  ·  TYPOLOGY MAP
 # ──────────────────────────────────────────────────────────────────────────────
 with T1:
+    st.markdown(
+        '<div class="info-banner">'
+        '<b>How cluster names are assigned:</b><br>'
+        '• <b>Resilient (Q1)</b>: lower pension burden and higher cash liquidity.<br>'
+        '• <b>Stable (Q2)</b>: lower pension burden but tighter cash liquidity.<br>'
+        '• <b>Pressured (Q3)</b>: higher pension burden, but currently stronger liquidity.<br>'
+        '• <b>Vulnerable (Q4)</b>: higher pension burden and lower liquidity.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
     xpad = (df["PC1_pension_axis"].max() - df["PC1_pension_axis"].min()) * .1
     ypad = (df["liquidity_axis"].max()   - df["liquidity_axis"].min())   * .1
     xr = [df["PC1_pension_axis"].min() - xpad, df["PC1_pension_axis"].max() + xpad]
@@ -1191,21 +1200,67 @@ with T1:
 
     with bc2:
         if SUS_COL in df.columns:
-            st.markdown("### Sustainability score by cluster")
-            fig_box = go.Figure()
-            for quad, (_, _, qcol) in QUAD_META.items():
-                sub = df[df["pca_2x2_type"] == quad][SUS_COL].dropna()
-                fig_box.add_trace(go.Box(
-                    y=sub, name=qname(quad),
-                    marker_color=qcol, line_color=qcol,
-                    fillcolor=rgba(qcol, 0.1), boxmean=True,
-                ))
-            fig_box.update_layout(
-                **base_chart_layout(height=240, margin=dict(l=40, r=10, t=10, b=10)),
-                yaxis=dark_axis(title="Score (/48)"),
-                showlegend=False,
+            st.markdown("### Sustainability scores by city (selected cluster)")
+            cluster_opts = [c for c in QUAD_META.keys() if c in df["pca_2x2_type"].unique()]
+            state_opts = ["All states"] + sorted(
+                s for s in df.loc[df["pca_2x2_type"].isin(cluster_opts), "State"].dropna().unique().tolist()
+                if s not in {"Indiana", "Iowa"}
             )
-            st.plotly_chart(fig_box, use_container_width=True, key="box_sus")
+            f1, f2 = st.columns(2)
+            with f1:
+                sel_cluster = st.selectbox(
+                    "Choose cluster",
+                    cluster_opts,
+                    format_func=qname,
+                    key="sus_cluster_select",
+                )
+            with f2:
+                sel_state = st.selectbox(
+                    "Choose state",
+                    state_opts,
+                    key="sus_state_select",
+                )
+
+            mask = df["pca_2x2_type"] == sel_cluster
+            if sel_state != "All states":
+                mask &= df["State"] == sel_state
+
+            sub_cluster = df.loc[mask, ["city", "State", SUS_COL]].dropna()
+            sub_cluster = sub_cluster.sort_values(SUS_COL, ascending=False)
+
+            if sub_cluster.empty:
+                st.caption("No sustainability scores available for this cluster/state selection.")
+            else:
+                sel_color = qcolor(sel_cluster)
+                fig_city_cluster = go.Figure(go.Bar(
+                    x=sub_cluster[SUS_COL],
+                    y=sub_cluster["city"],
+                    orientation="h",
+                    marker_color=sel_color,
+                    opacity=0.9,
+                    text=[f"{v:.1f}" for v in sub_cluster[SUS_COL]],
+                    textposition="outside",
+                    hovertemplate="%{y}<br>Sustainability: %{x:.1f}/48<extra></extra>",
+                ))
+                fig_city_cluster.update_layout(
+                    **base_chart_layout(
+                        height=max(260, min(820, 34 * len(sub_cluster) + 60)),
+                        margin=dict(l=10, r=40, t=10, b=30),
+                    ),
+                    xaxis=dark_axis(title="Score (/48)", range=[0, 48]),
+                    yaxis=dict(
+                        tickfont=dict(size=9, color="#ffffff"),
+                        automargin=True,
+                        categoryorder="array",
+                        categoryarray=sub_cluster["city"][::-1],
+                    ),
+                    showlegend=False,
+                )
+                st.plotly_chart(
+                    fig_city_cluster,
+                    use_container_width=True,
+                    key="bar_city_sus_cluster",
+                )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 2  ·  CITY vs CITY
