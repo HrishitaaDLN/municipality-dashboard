@@ -158,6 +158,111 @@ Because it is an average of standardized columns, most cities land in a **narrow
 """.strip()
 
 
+# ── About page (methodology + typology definition) ───────────────────────────
+ABOUT_PAGE_MD = """
+### About this dashboard
+
+This application brings together **municipal fiscal indicators**, **sustainability rubric scores**, and **documented climate actions** (energy, transport, waste) so staff can explore typology, compare peers, and see improvement ideas.
+
+---
+
+### 2×2 fiscal typology (Pension burden × Liquidity)
+
+The **Typology Map** is a scatterplot where each city is one point. The **vertical and horizontal dashed lines** are **dataset medians** (not regulatory thresholds). They split cities into four groups for discussion and benchmarking.
+
+**Horizontal axis — pension-related position (from PCA)**  
+We run **PCA** on the full set of standardized financial indicators (after flipping signs so that, for every input, *higher = financially stronger*). We use **PC1** from that PCA, then **re-orient** it so that it moves in the same direction as **standardized pension exposure** (from the same matrix): **larger values on the axis mean relatively lower pension burden / stronger pension position** in this sample. This matches the “**Pension axis (higher = lower pension burden)**” description in the reference methodology.
+
+**Vertical axis — liquidity (direct indicators, not PCA)**  
+The liquidity score is **not** a PCA component. It is the **row-wise mean** of **two columns** after an additional **standardization step applied only to those two columns together**:
+
+1. **Cash & Investment Coverage** (already standardized with all other indicators in the first step), and  
+2. **Net Investment Capacity** (same).
+
+Taking `StandardScaler().fit_transform` on just those two columns and averaging them is equivalent to your notebook’s `cash_good` / `netinv_good` pipeline. **Higher values mean stronger combined cash and net-investment position vs. peers** (“**higher = stronger cash + net investment**”).
+
+**Quadrant labels (median split)**  
+Each city is assigned one of four strings based on whether it sits above or below each median:
+
+| Quadrant (internal key) | Short label | Meaning |
+|-------------------------|-------------|---------|
+| Low pension burden / High liquidity | **Q1 · Resilient** | Stronger pension position *and* stronger liquidity vs. median |
+| Low pension burden / Low liquidity | **Q2 · Stable** | Stronger pension position, tighter liquidity |
+| High pension burden / High liquidity | **Q3 · Pressured** | Higher relative pension stress, but liquidity above median |
+| High pension burden / Low liquidity | **Q4 · Vulnerable** | Higher relative pension stress and liquidity below median |
+
+Point **colors** and **cluster statistics** use these assignments. **Background shading** on the map uses the same geometry (fixed in this version so labels match the corners).
+
+**Overall Fiscal Health** (`fiscal_health` elsewhere) is the **mean of all** standardized financial indicators (first `StandardScaler` pass only)—a separate composite from the two map axes.
+
+---
+
+### Tips while you explore
+
+- Hover the **ⓘ** (help) icon next to sidebar and form controls for **short definitions**.  
+- On the **summary tiles** under the page title, **hover the label** (dotted underline) for the same style of tip.  
+- The **About** tab has the full typology story; **How is Overall Fiscal Health calculated?** (expandable) explains the fiscal index.
+
+---
+
+### Data & responsibility
+
+Indicators come from your uploaded **Midwest fiscal workbook**; actions come from **municipality_actions.xlsx**. Small differences vs. a standalone notebook can still appear if sheet names, column sets, or row filters differ—use the Typology Map and exports to sanity-check.
+""".strip()
+
+# ── Short definitions for Streamlit `help=` (?) and KPI hover titles ─────────
+HELP: dict[str, str] = {
+    "state_pick": "Only states that appear in your uploaded fiscal spreadsheet are listed.",
+    "city_a": "First municipality for comparisons. Also used when you choose “City A only” in Dashboard view.",
+    "city_b": "Second municipality for comparisons. Also used when you choose “City B only” in Dashboard view.",
+    "dashboard_view": "“Compare” uses City A & B everywhere. Single‑city modes focus every tab on one municipality.",
+    "focus_state": "Custom single‑city mode: Illinois, Michigan, Minnesota, or Wisconsin (if present in your data).",
+    "focus_city": "Any city in the focus state that exists in the fiscal file.",
+    "map_population": "When on, each dot’s size reflects population; when off, dots are equal size.",
+    "map_labels": "Shows every city name on the map (can look crowded). Hover still works when off.",
+    "map_shade": "Light background colors match the four quadrants split by the dashed median lines.",
+    "map_highlight": "Cities outside the chosen state(s) fade so your selection stands out.",
+    "sus_cluster": "Same 2×2 typology group as the map (median split on pension axis × liquidity axis).",
+    "sus_state": "Limit the bar chart to one state, or show all states in the list.",
+    "sector_filter": "Actions data only includes Energy, Transport, and Waste in this app.",
+    "download_actions": "Downloads the action rows for the city or cities shown in this tab.",
+    "improve_sectors": "Filters benchmark action lists and sector pies to the sectors you select.",
+    "page_prev": "Previous page of action cards (12 per page).",
+    "page_next": "Next page of action cards (12 per page).",
+    "kpi_cities": "Number of cities in the loaded fiscal dataset.",
+    "kpi_states": "Number of distinct states in the loaded fiscal dataset.",
+    "kpi_sustain": "Sustainability rubric total from your spreadsheet (out of 48).",
+    "imp_sus_sel": "Your city’s sustainability rubric total (from the spreadsheet, out of 48).",
+    "imp_sus_bench": "The auto-picked peer city’s sustainability total for the same rubric.",
+    "imp_gap": "Benchmark score minus your city’s score on the rubric total (larger = more headroom vs. this peer).",
+}
+
+# How benchmark recommendations are built (shown in “How Can Cities Improve?”)
+RECOMMENDATIONS_METHOD_MD = """
+**What these are**  
+Plain, **rule-based suggestions** from the numbers already on this page. They are **not** legal, financial, or climate advice—just **conversation starters** for staff and leadership.
+
+**When a numbered line appears**  
+The app checks a few **if / then** rules. Each bullet is added **only** when its trigger is true:
+
+| Trigger | What we compare | What the text suggests |
+|--------|-------------------|-------------------------|
+| **Governance** | Rubric **Governance (/9)** | Benchmark is **> 0.5 points** higher than your city. |
+| **Data & analytics** | **Data & Analytics (/21)** | Same **> 0.5** gap rule. |
+| **Action planning** | **Action Planning (/18)** | Same **> 0.5** gap rule. |
+| **Formal authority** | Sustainability **commission authority level** | Benchmark’s level is **higher** than yours (see dataset coding). |
+| **Climate networks** | Count of **tracked network memberships** in the fiscal sheet | Benchmark has **more** memberships than your city. |
+| **Regional collaboration** | **Regional network count** in the fiscal sheet | Benchmark has **more** ties than your city. |
+| **Energy / Transport / Waste** | Rows in **municipality_actions.xlsx** for that sector | Benchmark has **more listed actions** than your city in the same sector. |
+
+**If the list is empty**  
+None of the thresholds above fired, so you see one **generic** line about small gains across pillars—the benchmark still scores higher overall from the rubric total.
+
+**Limits**  
+Recommendations **do not** read action text word-for-word; they only react to **counts and rubric fields** present in your files. Update the spreadsheet to improve the quality of triggers.
+""".strip()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CSS / THEME  — FIXED HIGH-CONTRAST VERSION
 # ══════════════════════════════════════════════════════════════════════════════
@@ -505,13 +610,26 @@ def qcss(label: str)   -> str: return QUAD_META.get(label, ("", "q2", ""))[1]
 def qcolor(label: str) -> str: return QUAD_META.get(label, ("", "", "#60a5fa"))[2]
 
 
-def kpi_card(value: str, label: str,
-             color: str = "#60a5fa", size: str = "1.6rem") -> str:
+def kpi_card(
+    value: str,
+    label: str,
+    color: str = "#60a5fa",
+    size: str = "1.6rem",
+    tip: Optional[str] = None,
+) -> str:
+    if tip:
+        safe = html.escape(tip).replace('"', "&quot;")
+        label_html = (
+            f'<span class="kpi-tip" title="{safe}" style="cursor:help;'
+            f"border-bottom:1px dotted #64748b\">{html.escape(label)}</span>"
+        )
+    else:
+        label_html = html.escape(label)
     return (
         f'<div class="kpi">'
-        f'<div class="kpi-val" style="font-size:{size};color:{color}">{value}</div>'
-        f'<div class="kpi-lbl">{label}</div>'
-        f'</div>'
+        f'<div class="kpi-val" style="font-size:{size};color:{color}">{html.escape(str(value))}</div>'
+        f'<div class="kpi-lbl">{label_html}</div>'
+        f"</div>"
     )
 
 
@@ -645,7 +763,8 @@ def load_fiscal(raw: bytes) -> pd.DataFrame:
     for i in range(pca_scores.shape[1]):
         df[f"PC{i+1}"] = pca_scores[:, i]
 
-    # ── Pension axis: PC1 oriented so higher = lower pension burden ───────────
+    # ── Pension axis: PC1 oriented so higher ⇔ lower pension burden (same as
+    #    correlating PC1 with X_norm["Pension Exposure Ratio"] after sign flips).
     pen_good = (
         X_norm["Pension Exposure Ratio"]
         if "Pension Exposure Ratio" in X_norm.columns
@@ -654,7 +773,8 @@ def load_fiscal(raw: bytes) -> pd.DataFrame:
     sign = 1 if np.corrcoef(df["PC1"], pen_good)[0, 1] >= 0 else -1
     df["PC1_pension_axis"] = df["PC1"] * sign
 
-    # ── Liquidity axis: average of cash + net investment (both z-scored) ─────
+    # ── Liquidity axis: match reference notebook — take standardized cash +
+    #    net investment columns, re-standardize that 2-column matrix only, mean.
     liq_cols = [
         c for c in ["Cash & Investment Coverage", "Net Investment Capacity"]
         if c in X_norm.columns
@@ -731,7 +851,6 @@ def render_city_card(row: pd.Series, accent: str) -> None:
     lbl, bcls, _ = QUAD_META.get(row.get("pca_2x2_type", ""), ("—", "q2", ""))
     cl  = int(row.get("commission_authority_level ", 0) or 0)
     rnc = int(row.get("regional_network_count", 0) or 0)
-    cnc = int(row.get("climate_network_count",  0) or 0)
     sus = row.get(SUS_COL, "N/A")
     sus_str = f"{sus:.0f}/48" if isinstance(sus, (int, float)) else "N/A"
 
@@ -749,7 +868,6 @@ def render_city_card(row: pd.Series, accent: str) -> None:
         {mrow("Cash Liquidity",      f"{row.get('liquidity_axis', 0):.2f}")}
         {mrow("Overall Fiscal Health (vs. peers)", f"{row.get('fiscal_health', 0):.2f}")}
         {mrow("Regional Networks",   str(rnc))}
-        {mrow("Climate Memberships", str(cnc))}
         {mrow("Commission Authority",COMM_LBL.get(cl, f"Level {cl}"))}
       </div>
     </div>
@@ -809,11 +927,9 @@ def render_full_profile(row: pd.Series, accent: str,
     st.markdown('<div class="sec-lbl" style="margin-top:14px">Governance & networks</div>', unsafe_allow_html=True)
     cl  = int(row.get("commission_authority_level ", 0) or 0)
     rnc = int(row.get("regional_network_count",     0) or 0)
-    cnc = int(row.get("climate_network_count",      0) or 0)
     for fv, fl in [
         (COMM_LBL.get(cl, f"Level {cl}"), "Commission authority"),
         (str(rnc), "Regional networks"),
-        (str(cnc), "Climate memberships"),
     ]:
         st.markdown(mrow(fl, fv), unsafe_allow_html=True)
     st.markdown(net_pills_html(row), unsafe_allow_html=True)
@@ -913,7 +1029,12 @@ def render_action_list(
         st.caption(f"Showing actions {start + 1}–{end} of {n_all} · Page {page + 1} of {n_pages}")
         p1, p2, p3 = st.columns([1, 2, 1])
         with p1:
-            if st.button("◀ Prev", key=f"{list_state_key}_prev", disabled=page <= 0):
+            if st.button(
+                "◀ Prev",
+                key=f"{list_state_key}_prev",
+                disabled=page <= 0,
+                help=HELP["page_prev"],
+            ):
                 st.session_state[page_key] = page - 1
                 st.rerun()
         with p3:
@@ -921,6 +1042,7 @@ def render_action_list(
                 "Next ▶",
                 key=f"{list_state_key}_next",
                 disabled=page >= n_pages - 1,
+                help=HELP["page_next"],
             ):
                 st.session_state[page_key] = page + 1
                 st.rerun()
@@ -1075,19 +1197,37 @@ def render_improvement_benchmark_for_city(
     k1, k2, k3 = st.columns(3)
     with k1:
         st.markdown(
-            kpi_card(f"{sus_f:.1f}/48", f"{city_nm} — sustainability", accent_sel, "1.25rem"),
+            kpi_card(
+                f"{sus_f:.1f}/48",
+                f"{city_nm} — sustainability",
+                accent_sel,
+                "1.25rem",
+                tip=HELP["imp_sus_sel"],
+            ),
             unsafe_allow_html=True,
         )
     with k2:
         st.markdown(
-            kpi_card(f"{sus_b:.1f}/48", "Benchmark — sustainability", accent_bench, "1.25rem"),
+            kpi_card(
+                f"{sus_b:.1f}/48",
+                "Benchmark — sustainability",
+                accent_bench,
+                "1.25rem",
+                tip=HELP["imp_sus_bench"],
+            ),
             unsafe_allow_html=True,
         )
-        with k3:
-            st.markdown(
-                kpi_card(f"+{sus_b - sus_f:.1f}", "Score gap (benchmark − selected)", "#34d399", "1.25rem"),
-                unsafe_allow_html=True,
-            )
+    with k3:
+        st.markdown(
+            kpi_card(
+                f"+{sus_b - sus_f:.1f}",
+                "Score gap (benchmark − selected)",
+                "#34d399",
+                "1.25rem",
+                tip=HELP["imp_gap"],
+            ),
+            unsafe_allow_html=True,
+        )
 
     acts_f = get_city_actions(city_nm, state_nm)
     acts_b = get_city_actions(str(bench["city"]), str(bench.get("State", "")))
@@ -1260,6 +1400,12 @@ def render_improvement_benchmark_for_city(
     )
     st.plotly_chart(fig_sub, use_container_width=True, key=f"bench_subscores_{chart_key_suffix}")
 
+    with st.expander(
+        f"How are recommendations for {city_nm}, {state_nm} generated?",
+        expanded=False,
+    ):
+        st.markdown(RECOMMENDATIONS_METHOD_MD)
+
     st.markdown("### Recommendations / suggested actions")
     recs: list[str] = []
     if gov_b > gov_f + 0.5:
@@ -1286,6 +1432,11 @@ def render_improvement_benchmark_for_city(
         recs.append(
             "**Networks**: Join or deepen participation in national/regional climate networks "
             "where the benchmark is active — use their toolkits and peer cohorts."
+        )
+    if rn_b > rn_f:
+        recs.append(
+            "**Regional ties**: Explore the same regional networks or coalitions the benchmark "
+            "uses—shared programs often help with capacity and funding ideas."
         )
     for sec in FOCUS_SECTORS:
         nf = int(acts_f["sector"].value_counts().get(sec, 0)) if "sector" in acts_f.columns else 0
@@ -1432,23 +1583,47 @@ with st.sidebar:
 
     # ── City A ────────────────────────────────────────────────────────────────
     st.markdown('<span class="sb-lbl">City A 🔵</span>', unsafe_allow_html=True)
-    st.selectbox("State A", compare_states, key="state_a",
-                 on_change=on_state_a_change, label_visibility="collapsed")
+    st.selectbox(
+        "State A",
+        compare_states,
+        key="state_a",
+        on_change=on_state_a_change,
+        label_visibility="collapsed",
+        help=HELP["state_pick"],
+    )
     c_a = cities_for(st.session_state["state_a"])
     if st.session_state.get("city_a") not in c_a:
         st.session_state["city_a"] = c_a[0] if c_a else ""
-    st.selectbox("City A", c_a, key="city_a", label_visibility="collapsed")
+    st.selectbox(
+        "City A",
+        c_a,
+        key="city_a",
+        label_visibility="collapsed",
+        help=HELP["city_a"],
+    )
 
     st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
 
     # ── City B ────────────────────────────────────────────────────────────────
     st.markdown('<span class="sb-lbl">City B 🟡</span>', unsafe_allow_html=True)
-    st.selectbox("State B", compare_states, key="state_b",
-                 on_change=on_state_b_change, label_visibility="collapsed")
+    st.selectbox(
+        "State B",
+        compare_states,
+        key="state_b",
+        on_change=on_state_b_change,
+        label_visibility="collapsed",
+        help=HELP["state_pick"],
+    )
     c_b = cities_for(st.session_state["state_b"])
     if st.session_state.get("city_b") not in c_b:
         st.session_state["city_b"] = c_b[0] if c_b else ""
-    st.selectbox("City B", c_b, key="city_b", label_visibility="collapsed")
+    st.selectbox(
+        "City B",
+        c_b,
+        key="city_b",
+        label_visibility="collapsed",
+        help=HELP["city_b"],
+    )
 
     st.divider()
     st.markdown("### Dashboard view")
@@ -1460,6 +1635,7 @@ with st.sidebar:
         format_func=lambda k: _mode_labels[k],
         key="dashboard_view_mode",
         label_visibility="collapsed",
+        help=HELP["dashboard_view"],
     )
     if st.session_state.get("dashboard_view_mode") == VIEW_MODE_CUSTOM:
         st.markdown('<span class="sb-lbl">Focus state (IL / MI / MN / WI)</span>', unsafe_allow_html=True)
@@ -1469,6 +1645,7 @@ with st.sidebar:
             key="focus_custom_state",
             on_change=on_focus_custom_state_change,
             label_visibility="collapsed",
+            help=HELP["focus_state"],
         )
         _cf_list = cities_for(st.session_state["focus_custom_state"])
         if st.session_state.get("focus_custom_city") not in _cf_list:
@@ -1479,15 +1656,36 @@ with st.sidebar:
             _cf_list,
             key="focus_custom_city",
             label_visibility="collapsed",
+            help=HELP["focus_city"],
         )
 
     st.divider()
     st.markdown("### Map options")
-    show_pop    = st.checkbox("Scale bubbles by population", value=True,  key="show_pop")
-    show_labels = st.checkbox("Show all city labels",        value=False, key="show_lbl")
-    shade       = st.checkbox("Shade quadrant areas",        value=True,  key="shade")
-    hl_states   = st.multiselect("Highlight state(s)",
-                                  highlight_states, default=[], key="hl_st")
+    show_pop    = st.checkbox(
+        "Scale bubbles by population",
+        value=True,
+        key="show_pop",
+        help=HELP["map_population"],
+    )
+    show_labels = st.checkbox(
+        "Show all city labels",
+        value=False,
+        key="show_lbl",
+        help=HELP["map_labels"],
+    )
+    shade       = st.checkbox(
+        "Shade quadrant areas",
+        value=True,
+        key="shade",
+        help=HELP["map_shade"],
+    )
+    hl_states   = st.multiselect(
+        "Highlight state(s)",
+        highlight_states,
+        default=[],
+        key="hl_st",
+        help=HELP["map_highlight"],
+    )
 
 # ── Effective cities (respect dashboard view mode) ─────────────────────────────
 _vm = st.session_state.get("dashboard_view_mode", VIEW_MODE_COMPARE)
@@ -1556,36 +1754,49 @@ sus_a = float(r1.get(SUS_COL, 0) or 0) if r1 is not None and SUS_COL in r1 else 
 sus_b = float(r2.get(SUS_COL, 0) or 0) if r2 is not None and SUS_COL in r2 else 0.0
 if single_city_mode:
     k_cols = st.columns(3)
-    for col_w, (v, lbl) in zip(k_cols, [
-        (str(len(df)),                               "Cities in dataset"),
-        (str(df["State"].nunique()),                 "States in dataset"),
-        (f"{sus_a:.1f}/48",                          f"{city1} — sustainability"),
+    for col_w, (v, lbl, hk) in zip(k_cols, [
+        (str(len(df)),          "Cities in dataset",   "kpi_cities"),
+        (str(df["State"].nunique()), "States in dataset", "kpi_states"),
+        (f"{sus_a:.1f}/48",     f"{city1} — sustainability", "kpi_sustain"),
     ]):
         with col_w:
-            st.markdown(kpi_card(v, lbl), unsafe_allow_html=True)
+            st.markdown(
+                kpi_card(v, lbl, tip=HELP[hk]),
+                unsafe_allow_html=True,
+            )
 else:
     k_cols = st.columns(4)
-    for col_w, (v, lbl) in zip(k_cols, [
-        (str(len(df)),                               "Cities"),
-        (str(df["State"].nunique()),                 "States"),
-        (f"{sus_a:.1f}/48",                          f"{city1} Sustainability"),
-        (f"{sus_b:.1f}/48",                          f"{city2} Sustainability"),
+    for col_w, (v, lbl, hk) in zip(k_cols, [
+        (str(len(df)),          "Cities",              "kpi_cities"),
+        (str(df["State"].nunique()), "States",         "kpi_states"),
+        (f"{sus_a:.1f}/48",     f"{city1} Sustainability", "kpi_sustain"),
+        (f"{sus_b:.1f}/48",     f"{city2} Sustainability", "kpi_sustain"),
     ]):
         with col_w:
-            st.markdown(kpi_card(v, lbl), unsafe_allow_html=True)
+            st.markdown(
+                kpi_card(v, lbl, tip=HELP[hk]),
+                unsafe_allow_html=True,
+            )
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════════════════════════════════════════
-T1, T2, T3, T4, T5 = st.tabs([
+T_about, T1, T2, T3, T4, T5 = st.tabs([
+    "About",
     "🗺️  Typology Map",
     "⚖️  City vs City",
     "⚡  Actions Explorer",
     "🔬  City Profiles",
     "How Can Cities Improve?",
 ])
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TAB 0  ·  ABOUT
+# ──────────────────────────────────────────────────────────────────────────────
+with T_about:
+    st.markdown(ABOUT_PAGE_MD)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 1  ·  TYPOLOGY MAP
@@ -1602,6 +1813,17 @@ with T1:
         unsafe_allow_html=True,
     )
 
+    with st.popover("❓ What this map shows (plain language)"):
+        st.markdown(
+            "**Horizontal (pension axis):** built from **PC1** of the financial PCA, oriented so "
+            "**further right = relatively lower pension burden** among cities in this file.\n\n"
+            "**Vertical (liquidity axis):** from **cash & investment coverage** and "
+            "**net investment capacity** only—**higher = stronger liquidity** vs. peers.\n\n"
+            "**Dashed lines:** the **median** of each axis (not a legal threshold). They split the "
+            "sample into four groups (Resilient / Stable / Pressured / Vulnerable).\n\n"
+            "**Colors:** each dot’s color is its group. **Stars** mark your selected city or cities."
+        )
+
     xpad = (df["PC1_pension_axis"].max() - df["PC1_pension_axis"].min()) * .1
     ypad = (df["liquidity_axis"].max()   - df["liquidity_axis"].min())   * .1
     xr = [df["PC1_pension_axis"].min() - xpad, df["PC1_pension_axis"].max() + xpad]
@@ -1609,16 +1831,17 @@ with T1:
 
     fig_map = go.Figure()
 
-    # Quadrant shading
+    # Quadrant shading (x increases → lower pension burden; y increases → liquidity)
+    # Upper-left = high burden + high liq (Q3); upper-right = Q1; lower-left = Q4; lower-right = Q2
     if shade:
         quad_shapes = [
-            (xr[0], pc1_median, liq_median, yr[1], "rgba(52,211,153,.05)",  "Q1  RESILIENT",  "#34d399",
-             xr[0] + (pc1_median - xr[0]) * .06, yr[1] - (yr[1] - liq_median) * .09),
-            (pc1_median, xr[1], liq_median, yr[1], "rgba(96,165,250,.05)",  "Q2  STABLE",     "#60a5fa",
+            (xr[0], pc1_median, liq_median, yr[1], "rgba(251,191,36,.05)",  "Q3  PRESSURED",  "#fbbf24",
+             xr[0] + (pc1_median - xr[0]) * .12, yr[1] - (yr[1] - liq_median) * .09),
+            (pc1_median, xr[1], liq_median, yr[1], "rgba(52,211,153,.05)",  "Q1  RESILIENT",  "#34d399",
              pc1_median + (xr[1] - pc1_median) * .55, yr[1] - (yr[1] - liq_median) * .09),
-            (xr[0], pc1_median, yr[0], liq_median, "rgba(251,191,36,.05)",  "Q3  PRESSURED",  "#fbbf24",
+            (xr[0], pc1_median, yr[0], liq_median, "rgba(248,113,113,.05)", "Q4  VULNERABLE", "#f87171",
              xr[0] + (pc1_median - xr[0]) * .06, yr[0] + (liq_median - yr[0]) * .12),
-            (pc1_median, xr[1], yr[0], liq_median, "rgba(248,113,113,.05)", "Q4  VULNERABLE", "#f87171",
+            (pc1_median, xr[1], yr[0], liq_median, "rgba(96,165,250,.05)",  "Q2  STABLE",     "#60a5fa",
              pc1_median + (xr[1] - pc1_median) * .55, yr[0] + (liq_median - yr[0]) * .12),
         ]
         for x0, x1, y0, y1, fill, qlbl, tc, ax, ay in quad_shapes:
@@ -1672,7 +1895,7 @@ with T1:
                 "Fiscal Health: %{customdata[3]}<br>"
                 "Population: %{customdata[4]:,}<br>"
                 "Climate Networks: %{customdata[6]}<br>"
-                "Pension Health: %{x:.2f}  ·  Cash Liquidity: %{y:.2f}"
+                "Pension axis: %{x:.2f}  ·  Liquidity axis: %{y:.2f}"
                 "<extra></extra>"
             ),
         ))
@@ -1697,13 +1920,19 @@ with T1:
             ))
 
     fig_map.update_layout(
-        **base_chart_layout(height=570, margin=dict(l=55, r=25, t=28, b=58)),
+        title=dict(
+            text="2×2 Fiscal typology: pension burden × liquidity (median split)",
+            font=dict(size=13, color="#f8fafc", family="IBM Plex Sans"),
+            x=0.5,
+            xanchor="center",
+        ),
+        **base_chart_layout(height=570, margin=dict(l=55, r=25, t=48, b=58)),
         xaxis=dark_axis(
-            title="← Worse pension position  |  Stronger pension position →",
+            title="Pension axis — higher = lower pension burden (vs. peers)",
             range=xr, title_font=dict(size=10),
         ),
         yaxis=dark_axis(
-            title="← Lower cash reserves  |  Higher cash reserves →",
+            title="Liquidity axis — higher = stronger cash + net investment (vs. peers)",
             range=yr, title_font=dict(size=10),
         ),
     )
@@ -1743,12 +1972,14 @@ with T1:
                     cluster_opts,
                     format_func=qname,
                     key="sus_cluster_select",
+                    help=HELP["sus_cluster"],
                 )
             with f2:
                 sel_state = st.selectbox(
                     "Choose state",
                     state_opts,
                     key="sus_state_select",
+                    help=HELP["sus_state"],
                 )
 
             mask = df["pca_2x2_type"] == sel_cluster
@@ -1796,6 +2027,14 @@ with T1:
 # TAB 2  ·  CITY vs CITY
 # ──────────────────────────────────────────────────────────────────────────────
 with T2:
+    with st.popover("❓ This tab — quick definitions"):
+        st.markdown(
+            "**City cards:** key fiscal and sustainability fields from your spreadsheet.\n\n"
+            "**Normalized charts (0–1):** each metric is scaled to this dataset’s range so you compare "
+            "*patterns*, not raw dollars.\n\n"
+            "**Bars vs. peer average:** z‑scores vs. all cities in the file—**zero** is typical; "
+            "**positive** = better than average on that indicator."
+        )
     if r1 is None or r2 is None:
         missing = [
             f"**{city1}, {state1}**" if r1 is None else None,
@@ -1976,6 +2215,12 @@ with T3:
         total_a1 = len(a1)
         total_a2 = len(a2)
 
+        with st.popover("❓ Actions tab — what counts?"):
+            st.markdown(
+                "Counts and lists are **derived from each city's sustainability report** in three sectors: "
+                "**energy**, **waste**, and **transport**."
+            )
+
         # ── Sector bar chart ───────────────────────────────────────────────────
         st.markdown("### Actions by sector")
         s1 = (a1["sector"].value_counts().reindex(FOCUS_SECTORS, fill_value=0)
@@ -2070,6 +2315,7 @@ with T3:
             FOCUS_SECTORS,
             default=FOCUS_SECTORS,
             key="t3_filter",
+            help=HELP["sector_filter"],
         )
 
         # Export button
@@ -2092,6 +2338,7 @@ with T3:
                 file_name=fn,
                 mime="text/csv",
                 key="dl_actions",
+                help=HELP["download_actions"],
             )
 
         st.markdown("### Climate actions")
@@ -2140,6 +2387,13 @@ with T4:
         "Hover any city to see details. "
         "Selected cities are shown as stars."
     )
+    with st.popover("❓ Reading this chart"):
+        st.markdown(
+            "**Horizontal (X):** Overall Fiscal Health index—peer‑scaled balance‑sheet mix; "
+            "**near 0** ≈ typical in this file.\n\n"
+            "**Vertical (Y):** Sustainability rubric total (**out of 48**).\n\n"
+            "**Dot color:** fiscal typology quadrant. **Stars:** your selected city or cities."
+        )
     if SUS_COL in df.columns:
         fig_bub = go.Figure()
         for quad, (_, _, qcol) in QUAD_META.items():
@@ -2209,13 +2463,28 @@ with T5:
             "</div>",
             unsafe_allow_html=True,
         )
-    with st.expander("How is Overall Fiscal Health calculated?", expanded=False):
+    with st.popover("❓ Peer benchmark — vocabulary"):
+        st.markdown(
+            "**Benchmark peer:** another city in this file with **similar Overall Fiscal Health** "
+            "(the composite fiscal index) but a **higher sustainability score**.\n\n"
+            "**Recommendations:** rule-based lines from rubric and action-count gaps—open "
+            "**How are recommendations for [your city] generated?** in that city’s panel for the exact triggers. "
+            "They are **ideas for discussion**, not directives."
+        )
+    with st.expander(
+        "How is Overall Fiscal Health calculated?",
+        expanded=False,
+    ):
         st.markdown(FISCAL_HEALTH_EXPLAINER_MD)
+    st.caption(
+        "Peer matching uses the Overall Fiscal Health index—open the section above for the full definition."
+    )
     sel_secs_improve = st.multiselect(
         "Sectors to show in action lists",
         FOCUS_SECTORS,
         default=FOCUS_SECTORS,
         key="t5_improve_sectors",
+        help=HELP["improve_sectors"],
     )
     if single_city_mode:
         render_improvement_benchmark_for_city(
