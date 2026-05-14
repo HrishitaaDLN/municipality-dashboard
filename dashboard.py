@@ -902,7 +902,7 @@ def render_full_profile(row: pd.Series, accent: str,
     """Detailed city profile used in the City Profiles tab."""
     st.markdown(
         f'<h2 style="color:{accent}">{row["city"]} '
-        f'<span style="color:#1e3045;font-size:.6em;font-family:IBM Plex Sans">'
+        f'<span style="color:#7dd3fc;font-size:.6em;font-family:IBM Plex Sans;font-weight:500">'
         f'{row.get("State", "")}</span></h2>',
         unsafe_allow_html=True,
     )
@@ -2154,23 +2154,84 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════════════════════════════════════════
-T_about, T1, T2, T3, T4, T5 = st.tabs([
+T_about, T5, T1, T2, T3, T4 = st.tabs([
     "About",
+    "How Can Cities Improve?",
     "🗺️  Typology Map",
     "⚖️  City vs City",
     "⚡  Actions Explorer",
     "🔬  City Profiles",
-    "How Can Cities Improve?",
 ])
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TAB 0  ·  ABOUT
+# TAB  ·  ABOUT
 # ──────────────────────────────────────────────────────────────────────────────
 with T_about:
     st.markdown(ABOUT_PAGE_MD)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TAB 1  ·  TYPOLOGY MAP
+# TAB  ·  HOW CAN CITIES IMPROVE?  (peer benchmarking; next to About)
+# ──────────────────────────────────────────────────────────────────────────────
+with T5:
+    if single_city_mode:
+        st.markdown(
+            '<div class="info-banner">'
+            "<b>Peer learning for your selected city</b><br>"
+            "Benchmarking uses the same rules as before: a higher-scoring municipality with "
+            "<b>similar Overall Fiscal Health</b>, plus sector actions and recommendations."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div class="info-banner">'
+            "<b>Peer learning & benchmarking</b><br>"
+            "Each sub-tab finds a municipality with a <b>similar Overall Fiscal Health</b> "
+            "index (see below) but a <b>higher sustainability score</b>, then compares climate "
+            "actions and score pillars so you can see what stronger peers do differently."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with st.popover("❓ Peer benchmark — vocabulary"):
+        st.markdown(
+            "**Benchmark peer:** another city in this file with **similar Overall Fiscal Health** "
+            "(the composite fiscal index) but a **higher sustainability score**.\n\n"
+            "**Recommendations:** use **Generate peer-based recommendations (Gemini 2.5 Flash)** to send full "
+            "action text plus rubric/fiscal snapshots to Gemini—outputs should reflect **benchmark-only** "
+            "evidence. These are **ideas for discussion**, not directives."
+        )
+    with st.expander(
+        "How is Overall Fiscal Health calculated?",
+        expanded=False,
+    ):
+        st.markdown(FISCAL_HEALTH_EXPLAINER_MD)
+    st.caption(
+        "Peer matching uses the Overall Fiscal Health index—open the section above for the full definition."
+    )
+    sel_secs_improve = st.multiselect(
+        "Sectors to show in action lists",
+        FOCUS_SECTORS,
+        default=FOCUS_SECTORS,
+        key="t5_improve_sectors",
+        help=HELP["improve_sectors"],
+    )
+    if single_city_mode:
+        render_improvement_benchmark_for_city(
+            r1, city1, state1, "#93c5fd", "#34d399", sel_secs_improve, "improve_single",
+        )
+    else:
+        sub_a, sub_b = st.tabs(["City A", "City B"])
+        with sub_a:
+            render_improvement_benchmark_for_city(
+                r1, city1, state1, "#93c5fd", "#34d399", sel_secs_improve, "improve_a",
+            )
+        with sub_b:
+            render_improvement_benchmark_for_city(
+                r2, city2, state2, "#fbbf24", "#34d399", sel_secs_improve, "improve_b",
+            )
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TAB  ·  TYPOLOGY MAP
 # ──────────────────────────────────────────────────────────────────────────────
 with T1:
     st.markdown(
@@ -2825,64 +2886,3 @@ with T4:
                 render_full_profile(r2, "#fbbf24", fin_avail, "b")
             else:
                 st.warning(f"**{city2}, {state2}** not found in the dataset.")
-
-# ──────────────────────────────────────────────────────────────────────────────
-# TAB 5  ·  HOW CAN CITIES IMPROVE?  (peer benchmarking)
-# ──────────────────────────────────────────────────────────────────────────────
-with T5:
-    if single_city_mode:
-        st.markdown(
-            '<div class="info-banner">'
-            "<b>Peer learning for your selected city</b><br>"
-            "Benchmarking uses the same rules as before: a higher-scoring municipality with "
-            "<b>similar Overall Fiscal Health</b>, plus sector actions and recommendations."
-            "</div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            '<div class="info-banner">'
-            "<b>Peer learning & benchmarking</b><br>"
-            "Each sub-tab finds a municipality with a <b>similar Overall Fiscal Health</b> "
-            "index (see below) but a <b>higher sustainability score</b>, then compares climate "
-            "actions and score pillars so you can see what stronger peers do differently."
-            "</div>",
-            unsafe_allow_html=True,
-        )
-    with st.popover("❓ Peer benchmark — vocabulary"):
-        st.markdown(
-            "**Benchmark peer:** another city in this file with **similar Overall Fiscal Health** "
-            "(the composite fiscal index) but a **higher sustainability score**.\n\n"
-            "**Recommendations:** use **Generate peer-based recommendations (Gemini 2.5 Flash)** to send full "
-            "action text plus rubric/fiscal snapshots to Gemini—outputs should reflect **benchmark-only** "
-            "evidence. These are **ideas for discussion**, not directives."
-        )
-    with st.expander(
-        "How is Overall Fiscal Health calculated?",
-        expanded=False,
-    ):
-        st.markdown(FISCAL_HEALTH_EXPLAINER_MD)
-    st.caption(
-        "Peer matching uses the Overall Fiscal Health index—open the section above for the full definition."
-    )
-    sel_secs_improve = st.multiselect(
-        "Sectors to show in action lists",
-        FOCUS_SECTORS,
-        default=FOCUS_SECTORS,
-        key="t5_improve_sectors",
-        help=HELP["improve_sectors"],
-    )
-    if single_city_mode:
-        render_improvement_benchmark_for_city(
-            r1, city1, state1, "#93c5fd", "#34d399", sel_secs_improve, "improve_single",
-        )
-    else:
-        sub_a, sub_b = st.tabs(["City A", "City B"])
-        with sub_a:
-            render_improvement_benchmark_for_city(
-                r1, city1, state1, "#93c5fd", "#34d399", sel_secs_improve, "improve_a",
-            )
-        with sub_b:
-            render_improvement_benchmark_for_city(
-                r2, city2, state2, "#fbbf24", "#34d399", sel_secs_improve, "improve_b",
-            )
