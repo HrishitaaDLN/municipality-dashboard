@@ -1,0 +1,2 @@
+# Local API keys (Streamlit loads `.streamlit/secrets.toml` automatically)
+.streamlit/secrets.toml

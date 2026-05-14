@@ -4,3 +4,15 @@ primaryColor = "#60a5fa"
 backgroundColor = "#080c18"
 secondaryBackgroundColor = "#0c1020"
 textColor = "#f8fafc"
+
+# Streamlit-friendly defaults (local app)
+[browser]
+gatherUsageStats = false
+
+[runner]
+# Snappier reruns when widget state changes (Streamlit 1.33+)
+fastReruns = true
+
+[client]
+# Less chrome in the top-right chart toolbar where Plotly provides its own controls
+toolbarMode = "minimal"

@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import html
 import io
+import json
+import unicodedata
+import os
 import re
 import warnings
 from pathlib import Path
@@ -97,15 +100,6 @@ COMM_LBL: dict[int, str] = {
     4: "Full authority",
 }
 
-# ── 2×2 typology quadrants ────────────────────────────────────────────────────
-QUAD_META: dict[str, tuple[str, str, str]] = {
-    # key → (display name, css-class suffix, hex colour)
-    "Low pension burden / High liquidity":  ("Q1 · Resilient",  "q1", "#34d399"),
-    "Low pension burden / Low liquidity":   ("Q2 · Stable",     "q2", "#60a5fa"),
-    "High pension burden / High liquidity": ("Q3 · Pressured",  "q3", "#fbbf24"),
-    "High pension burden / Low liquidity":  ("Q4 · Vulnerable", "q4", "#f87171"),
-}
-
 # ── Action sectors & colours ──────────────────────────────────────────────────
 SEC_COL: dict[str, str] = {
     "Energy":      "#fbbf24",
@@ -122,6 +116,18 @@ SEC_COL: dict[str, str] = {
 FOCUS_SECTORS: list[str] = ["Energy", "Transport", "Waste"]
 ACTION_PAGE_SIZE: int = 12
 
+# User-facing name for the horizontal typology axis (`PC1_pension_axis` in data — composite, not “pension only”)
+PC1_AXIS_LABEL = "Long-term pressure"
+
+# ── 2×2 typology quadrants ────────────────────────────────────────────────────
+QUAD_META: dict[str, tuple[str, str, str]] = {
+    # key → (display name, css-class suffix, hex colour)
+    "Lower long-term pressure / High liquidity":  ("Q1 · Resilient",  "q1", "#34d399"),
+    "Lower long-term pressure / Low liquidity":   ("Q2 · Stable",     "q2", "#60a5fa"),
+    "Higher long-term pressure / High liquidity": ("Q3 · Pressured",  "q3", "#fbbf24"),
+    "Higher long-term pressure / Low liquidity":  ("Q4 · Vulnerable", "q4", "#f87171"),
+}
+
 # ── Fallback data path (when no file is uploaded) ─────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
 DISK_FISCAL  = BASE_DIR / "midwest data (1).xlsx"
@@ -129,7 +135,7 @@ DISK_ACTIONS = BASE_DIR / "municipality_actions.xlsx"
 
 # ── Friendly axis/metric labels for municipality audiences ────────────────────
 FRIENDLY: dict[str, str] = {
-    "PC1_pension_axis": "Pension Health Score",
+    "PC1_pension_axis": f"{PC1_AXIS_LABEL} (composite)",
     "liquidity_axis":   "Cash Liquidity Score",
     "fiscal_score":     "Overall Fiscal Health",
     "pca_2x2_type":     "Fiscal Cluster",
@@ -166,12 +172,18 @@ This application brings together **municipal fiscal indicators**, **sustainabili
 
 ---
 
-### 2×2 fiscal typology (Pension burden × Liquidity)
+### 2×2 fiscal typology (Long-term fiscal pressure × Liquidity)
 
 The **Typology Map** is a scatterplot where each city is one point. The **vertical and horizontal dashed lines** are **dataset medians** (not regulatory thresholds). They split cities into four groups for discussion and benchmarking.
 
-**Horizontal axis — pension-related position (from PCA)**  
-We run **PCA** on the full set of standardized financial indicators (after flipping signs so that, for every input, *higher = financially stronger*). We use **PC1** from that PCA, then **re-orient** it so that it moves in the same direction as **standardized pension exposure** (from the same matrix): **larger values on the axis mean relatively lower pension burden / stronger pension position** in this sample. This matches the “**Pension axis (higher = lower pension burden)**” description in the reference methodology.
+#### What we mean by “long-term pressure” and “liquidity”
+
+- **Long-term pressure (horizontal axis)** — A **composite** “how squeezed is the balance sheet?” score—not one line item by itself. It is **PC1** from a PCA on **all** standardized fiscal columns, then **re-oriented** using **Pension Exposure Ratio** (when present) as an anchor so the axis has a clear stress direction. **Further right = a lighter long-term load in this combined sense vs. other cities in your file**; further left = a heavier load *relative to this sample* (still not a bond rating or legal opinion).
+
+- **Liquidity (vertical axis)** — **Liquidity** means **cash and balance-sheet flexibility**, not city wealth or GDP. The score is the **average of two fields only**—**Cash & Investment Coverage** and **Net Investment Capacity**—after they are standardized **together** (then averaged). **Higher = stronger near-term cash / net-investment cushion vs. peers in the upload.**
+
+**Horizontal axis — long-term pressure (from PCA)**  
+We run **PCA** on the full set of standardized financial indicators (after flipping signs so that, for every input, *higher = financially stronger*). We use **PC1** from that PCA, then **re-orient** it so that it moves in the same direction as **standardized pension exposure** (from the same matrix): **larger values on the axis mean relatively lower long-term fiscal pressure** in this sample. We call this **long-term pressure** because it blends pensions, debt, and other liability signals—not “pension” alone.
 
 **Vertical axis — liquidity (direct indicators, not PCA)**  
 The liquidity score is **not** a PCA component. It is the **row-wise mean** of **two columns** after an additional **standardization step applied only to those two columns together**:
@@ -186,10 +198,10 @@ Each city is assigned one of four strings based on whether it sits above or belo
 
 | Quadrant (internal key) | Short label | Meaning |
 |-------------------------|-------------|---------|
-| Low pension burden / High liquidity | **Q1 · Resilient** | Stronger pension position *and* stronger liquidity vs. median |
-| Low pension burden / Low liquidity | **Q2 · Stable** | Stronger pension position, tighter liquidity |
-| High pension burden / High liquidity | **Q3 · Pressured** | Higher relative pension stress, but liquidity above median |
-| High pension burden / Low liquidity | **Q4 · Vulnerable** | Higher relative pension stress and liquidity below median |
+| Lower long-term pressure / High liquidity | **Q1 · Resilient** | Lighter long-term load *and* stronger liquidity vs. median |
+| Lower long-term pressure / Low liquidity | **Q2 · Stable** | Lighter long-term load, tighter liquidity |
+| Higher long-term pressure / High liquidity | **Q3 · Pressured** | Heavier long-term load, but liquidity above median |
+| Higher long-term pressure / Low liquidity | **Q4 · Vulnerable** | Heavier long-term load and liquidity below median |
 
 Point **colors** and **cluster statistics** use these assignments. **Background shading** on the map uses the same geometry (fixed in this version so labels match the corners).
 
@@ -224,25 +236,27 @@ HELP: dict[str, str] = {
     "map_highlight": "Cities outside the chosen state(s) fade so your selection stands out.",
     "t1_map_states": "Typology Map tab only: plot dots (and the cluster donut below the map) for these states. "
     "Dashed medians still use every city in your upload.",
-    "sus_cluster": "Same 2×2 typology group as the map (median split on pension axis × liquidity axis).",
+    "sus_cluster": "Same 2×2 typology group as the map (median split on long-term pressure axis × liquidity axis).",
     "sus_state": "Limit the bar chart to one state, or show all states in the list.",
     "sector_filter": "Actions data only includes Energy, Transport, and Waste in this app.",
     "download_actions": "Downloads the action rows for the city or cities shown in this tab.",
     "improve_sectors": "Filters benchmark action lists and sector pies to the sectors you select.",
     "page_prev": "Previous page of action cards (12 per page).",
     "page_next": "Next page of action cards (12 per page).",
-    "kpi_cities": "Number of cities in the loaded fiscal dataset.",
-    "kpi_states": "Number of distinct states in the loaded fiscal dataset.",
+    "kpi_cities": "Unique municipalities in **Illinois, Michigan, Minnesota, and Wisconsin** in your file "
+    "(city + state rows; duplicates collapsed).",
+    "kpi_states": "How many of those **four** states appear in your fiscal upload (not Indiana/Iowa or others).",
     "kpi_sustain": "Sustainability rubric total from your spreadsheet (out of 48).",
     "imp_sus_sel": "Your city’s sustainability rubric total (from the spreadsheet, out of 48).",
     "imp_sus_bench": "The auto-picked peer city’s sustainability total for the same rubric.",
     "imp_gap": "Benchmark score minus your city’s score on the rubric total (larger = more headroom vs. this peer).",
+    "gemini_api_key": "Optional. Paste a Google AI key for Gemini; kept in this session only unless you use env/secrets. Leave empty if GOOGLE_API_KEY is already set on the machine.",
 }
 
 # How benchmark recommendations are built (shown in “How Can Cities Improve?”)
 RECOMMENDATIONS_METHOD_MD = """
 **What these are**  
-Plain, **rule-based suggestions** from the numbers already on this page. They are **not** legal, financial, or climate advice—just **conversation starters** for staff and leadership.
+The **numbered peer recommendations** on this tab are produced by **Gemini** from the JSON we send (actions + rubric + fiscal context). The table below describes an **older rule-based checklist** that was removed from the UI; it is kept here only as a **reference** for how automated gap language was originally triggered.
 
 **When a numbered line appears**  
 The app checks a few **if / then** rules. Each bullet is added **only** when its trigger is true:
@@ -261,6 +275,9 @@ None of the thresholds above fired, so you see one **generic** line about small 
 
 **Limits**  
 Recommendations **do not** read action text word-for-word; they only react to **counts and rubric fields** present in your files. Update the spreadsheet to improve the quality of triggers.
+
+**Optional — Gemini peer recommendations**  
+The **Generate peer-based recommendations** control (same tab) sends full Energy/Transport/Waste action rows plus rubric/fiscal JSON for both cities to **Google Gemini**; that path is separate from this rule table. Configure a key via the sidebar **Gemini (optional)** field, **`GOOGLE_API_KEY`** / **`GEMINI_API_KEY`** in the environment, or **`.streamlit/secrets.toml`**.
 """.strip()
 
 
@@ -764,8 +781,8 @@ def load_fiscal(raw: bytes) -> pd.DataFrame:
     for i in range(pca_scores.shape[1]):
         df[f"PC{i+1}"] = pca_scores[:, i]
 
-    # ── Pension axis: PC1 oriented so higher ⇔ lower pension burden (same as
-    #    correlating PC1 with X_norm["Pension Exposure Ratio"] after sign flips).
+    # ── Horizontal typology axis: PC1 oriented so higher ⇔ lower long-term pressure
+    #    (correlates PC1 with X_norm["Pension Exposure Ratio"] after sign flips).
     pen_good = (
         X_norm["Pension Exposure Ratio"]
         if "Pension Exposure Ratio" in X_norm.columns
@@ -801,8 +818,12 @@ def load_fiscal(raw: bytes) -> pd.DataFrame:
     liq_median = df["liquidity_axis"].median()
 
     def _assign_quad(row: pd.Series) -> str:
-        p = "Low pension burden"  if row["PC1_pension_axis"] >= pc1_median else "High pension burden"
-        l = "High liquidity"      if row["liquidity_axis"]   >= liq_median else "Low liquidity"
+        p = (
+            "Lower long-term pressure"
+            if row["PC1_pension_axis"] >= pc1_median
+            else "Higher long-term pressure"
+        )
+        l = "High liquidity" if row["liquidity_axis"] >= liq_median else "Low liquidity"
         return f"{p} / {l}"
 
     df["pca_2x2_type"] = df.apply(_assign_quad, axis=1)
@@ -865,8 +886,8 @@ def render_city_card(row: pd.Series, accent: str) -> None:
         {mrow("Median Household Income", f"${int(row.get('Median Income', 0) or 0):,}")}
         {mrow("Per Capita Income",   f"${int(row.get('Per Capita', 0) or 0):,}")}
         {mrow("Sustainability Score",sus_str)}
-        {mrow("Pension Health",      f"{row.get('PC1_pension_axis', 0):.2f}")}
-        {mrow("Cash Liquidity",      f"{row.get('liquidity_axis', 0):.2f}")}
+        {mrow(PC1_AXIS_LABEL, f"{row.get('PC1_pension_axis', 0):.2f}")}
+        {mrow("Cash liquidity",  f"{row.get('liquidity_axis', 0):.2f}")}
         {mrow("Overall Fiscal Health (vs. peers)", f"{row.get('fiscal_health', 0):.2f}")}
         {mrow("Regional Networks",   str(rnc))}
         {mrow("Commission Authority",COMM_LBL.get(cl, f"Level {cl}"))}
@@ -918,8 +939,8 @@ def render_full_profile(row: pd.Series, accent: str,
         unsafe_allow_html=True,
     )
     for fld, flbl in [
-        ("PC1_pension_axis", "Pension Health Score"),
-        ("liquidity_axis",   "Cash Liquidity Score"),
+        ("PC1_pension_axis", FRIENDLY["PC1_pension_axis"]),
+        ("liquidity_axis",   FRIENDLY["liquidity_axis"]),
         ("fiscal_health",    "Overall Fiscal Health (vs. peers)"),
     ]:
         st.markdown(mrow(flbl, f"{row.get(fld, 0):.2f}"), unsafe_allow_html=True)
@@ -974,7 +995,7 @@ def render_full_profile(row: pd.Series, accent: str,
             ),
             showlegend=False,
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"fin_profile_bar_{key_suffix}")
+        st.plotly_chart(fig, width="stretch", key=f"fin_profile_bar_{key_suffix}")
 
 
 def render_action_list(
@@ -1104,7 +1125,314 @@ def render_focus_sector_pie(
         **base_chart_layout(height=280, margin=dict(l=22, r=22, t=10, b=26)),
         showlegend=False,
     )
-    st.plotly_chart(fig_p, use_container_width=True, key=plot_key)
+    st.plotly_chart(fig_p, width="stretch", key=plot_key)
+
+
+# Default Gemini model for peer-based recommendations (override with env GEMINI_MODEL)
+GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+_GEMINI_ACTION_ROW_CAP = 450
+
+
+def _actions_records(acts: pd.DataFrame) -> tuple[list[dict], bool]:
+    """Serialize Energy/Transport/Waste action rows for LLM context (long text trimmed)."""
+    if acts is None or acts.empty:
+        return [], False
+    cols = [c for c in ("sector", "action_name", "action") if c in acts.columns]
+    if not cols:
+        return [], False
+    sub = acts[cols].copy()
+    truncated = len(sub) > _GEMINI_ACTION_ROW_CAP
+    if truncated:
+        sub = sub.iloc[:_GEMINI_ACTION_ROW_CAP].copy()
+    for c in sub.columns:
+        if c == "action" and sub[c].dtype == object:
+            sub[c] = sub[c].astype(str).str.slice(0, 1500)
+        elif sub[c].dtype == object:
+            sub[c] = sub[c].astype(str).str.slice(0, 400)
+    return sub.to_dict(orient="records"), truncated
+
+
+def _rubric_fiscal_snapshot(row: pd.Series) -> dict:
+    """Sustainability pillars + key fiscal indices for one municipality."""
+    snap: dict = {}
+    for sc_col, sc_lbl, sc_max in SUS_SUBS:
+        if sc_col in row.index:
+            key = sc_lbl.split("(")[0].strip().replace("\n", " ")
+            snap[f"{key}_out_of_{sc_max}"] = float(
+                pd.to_numeric(row.get(sc_col), errors="coerce") or 0.0
+            )
+    if SUS_COL in row.index:
+        snap["total_sustainability_out_of_48"] = float(
+            pd.to_numeric(row.get(SUS_COL), errors="coerce") or 0.0
+        )
+    for k_py, k_out in [
+        ("fiscal_health", "overall_fiscal_health_peer_index"),
+        ("PC1_pension_axis", "long_term_pressure_axis_composite"),
+        ("liquidity_axis", "liquidity_axis"),
+    ]:
+        if k_py in row.index:
+            snap[k_out] = float(pd.to_numeric(row.get(k_py), errors="coerce") or 0.0)
+    if "population" in row.index:
+        snap["population"] = int(pd.to_numeric(row.get("population"), errors="coerce") or 0)
+    if "pca_2x2_type" in row.index:
+        snap["fiscal_typology_quadrant"] = str(row.get("pca_2x2_type") or "")
+    cl = 0
+    for k in ("commission_authority_level ", "commission_authority_level"):
+        if k in row.index:
+            cl = int(pd.to_numeric(row.get(k), errors="coerce") or 0)
+            break
+    snap["sustainability_commission_authority"] = COMM_LBL.get(cl, str(cl))
+    if "regional_network_count" in row.index:
+        snap["regional_network_count"] = int(
+            pd.to_numeric(row.get("regional_network_count"), errors="coerce") or 0
+        )
+    return snap
+
+
+def _resolve_gemini_api_key() -> str:
+    """Sidebar session key → environment → Streamlit secrets. Returns '' if unset (never raises)."""
+    try:
+        ui = str(st.session_state.get("gemini_api_key_ui") or "").strip()
+    except Exception:
+        ui = ""
+    if ui:
+        return ui
+    for env_k in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
+        v = (os.environ.get(env_k) or "").strip()
+        if v:
+            return v
+    try:
+        sec = getattr(st, "secrets", None)
+        if sec is not None:
+            for k in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
+                v = sec.get(k)
+                if v:
+                    return str(v).strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _gemini_build_peer_prompt(payload: dict) -> str:
+    return (
+        "You are helping U.S. municipal sustainability and finance staff.\n\n"
+        "Two cities are paired: **similar Overall Fiscal Health** (peer fiscal index from the spreadsheet) "
+        "but the **benchmark city has a higher total sustainability score**. The **selected city** should "
+        "learn from the **benchmark (peer) city**.\n\n"
+        "**Your task:** Write **8–14 numbered recommendations** for the **selected city**. Each recommendation "
+        "must be **strictly grounded in the benchmark city’s evidence** in the JSON below—its listed "
+        "Energy/Transport/Waste actions and/or its higher Governance, Data & Analytics, or Action Planning scores "
+        "relative to the selected city. **Do not** invent benchmark programs that are not supported by that "
+        "evidence. You may contrast with the selected city’s data, but **every actionable idea must reflect what "
+        "the benchmark actually documents or scores well on**.\n\n"
+        "Style: short bullets, concrete, no legal advice, no long quotations. If an action field is empty, say so "
+        "and lean on rubric-score gaps instead.\n\n"
+        "**Data (JSON):**\n```json\n"
+        + json.dumps(payload, indent=2, ensure_ascii=False)
+        + "\n```"
+    )
+
+
+def _gemini_generate_peer_recommendations(prompt: str, api_key: str) -> str:
+    try:
+        import google.generativeai as genai  # type: ignore[import-untyped]
+    except ImportError as e:
+        raise RuntimeError(
+            "Install **google-generativeai**: `pip install google-generativeai` "
+            "(see requirements.txt)."
+        ) from e
+
+    key = (api_key or "").strip()
+    if not key:
+        raise RuntimeError(
+            "Missing API key: paste it under **Gemini (optional)** in the sidebar, "
+            "or set **GOOGLE_API_KEY** / **GEMINI_API_KEY** (or add the same keys to **.streamlit/secrets.toml**)."
+        )
+    model_id = os.environ.get("GEMINI_MODEL", GEMINI_DEFAULT_MODEL).strip() or GEMINI_DEFAULT_MODEL
+    genai.configure(api_key=key)
+    model = genai.GenerativeModel(model_id)
+    resp = model.generate_content(
+        prompt,
+        generation_config={"temperature": 0.35, "max_output_tokens": 4096},
+    )
+    if not resp.candidates:
+        raise RuntimeError("Gemini returned no candidates (blocked or empty).")
+    text = getattr(resp, "text", None) or ""
+    if not text.strip():
+        # Fallback: stitch parts if .text missing
+        parts: list[str] = []
+        for cand in resp.candidates:
+            for part in getattr(cand.content, "parts", []) or []:
+                if hasattr(part, "text") and part.text:
+                    parts.append(part.text)
+        text = "\n".join(parts) if parts else "(Empty model response)"
+    return text
+
+
+def _slug_peer_rec_pdf_filename(city_nm: str, state_nm: str) -> str:
+    """ASCII-safe filename: City_State_peer_recommendations.pdf."""
+
+    def _slug(part: str, cap: int = 40) -> str:
+        p = str(part or "").strip()
+        p = unicodedata.normalize("NFKD", p)
+        p = p.encode("ascii", "ignore").decode("ascii")
+        p = re.sub(r"[^\w\-.]+", "_", p, flags=re.ASCII)
+        p = re.sub(r"_+", "_", p).strip("_") or "city"
+        return p[:cap]
+
+    return f"{_slug(city_nm)}_{_slug(state_nm)}_peer_recommendations.pdf"
+
+
+def _peer_rec_md_line_to_reportlab_xml(line: str) -> str:
+    """Turn one line of Gemini markdown into ReportLab Paragraph XML (**bold** only)."""
+    parts = line.split("**")
+    out: list[str] = []
+    for i, ch in enumerate(parts):
+        esc = html.escape(ch, quote=False)
+        if i % 2 == 1:
+            out.append(f"<b>{esc}</b>")
+        else:
+            out.append(esc)
+    return "".join(out)
+
+
+def _build_peer_recommendations_pdf_bytes(
+    city_nm: str,
+    state_nm: str,
+    bench_label: str,
+    sus_f: float,
+    sus_b: float,
+    fh_f: float,
+    fh_b: float,
+    body_markdown: str,
+) -> bytes:
+    try:
+        from datetime import date
+
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_LEFT
+        from reportlab.lib.pagesizes import LETTER
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import inch
+        from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer
+    except ImportError as e:
+        raise RuntimeError(
+            "Install **reportlab**: `pip install reportlab` (see requirements.txt)."
+        ) from e
+
+    buf = io.BytesIO()
+    margin = 54
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=LETTER,
+        rightMargin=margin,
+        leftMargin=margin,
+        topMargin=margin,
+        bottomMargin=margin,
+        title=f"Peer recommendations — {city_nm}",
+        author="Municipal Sustainability Dashboard",
+    )
+    page_w = LETTER[0]
+    rule_w = page_w - 2 * margin
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        name="PeerPdfTitle",
+        parent=styles["Heading1"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        textColor=colors.HexColor("#0f172a"),
+        spaceAfter=4,
+        leading=22,
+    )
+    subtitle_style = ParagraphStyle(
+        name="PeerPdfSubtitle",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=13,
+        textColor=colors.HexColor("#1e3a5f"),
+        spaceAfter=14,
+        leading=16,
+    )
+    meta_style = ParagraphStyle(
+        name="PeerPdfMeta",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=9.5,
+        textColor=colors.HexColor("#475569"),
+        spaceAfter=5,
+        leading=12,
+    )
+    body_style = ParagraphStyle(
+        name="PeerPdfBody",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=11,
+        textColor=colors.HexColor("#1e293b"),
+        spaceAfter=9,
+        leading=15,
+        alignment=TA_LEFT,
+    )
+    foot_style = ParagraphStyle(
+        name="PeerPdfFoot",
+        parent=styles["Normal"],
+        fontName="Helvetica-Oblique",
+        fontSize=8.5,
+        textColor=colors.HexColor("#64748b"),
+        spaceBefore=14,
+        leading=12,
+    )
+
+    story: list = []
+    story.append(Paragraph("Peer-based recommendations", title_style))
+    story.append(
+        Paragraph(
+            f"{html.escape(city_nm, quote=False)}, {html.escape(state_nm, quote=False)}",
+            subtitle_style,
+        )
+    )
+    story.append(
+        Paragraph(
+            f"<b>Benchmark peer:</b> {html.escape(bench_label, quote=False)}",
+            meta_style,
+        )
+    )
+    story.append(
+        Paragraph(
+            f"Sustainability (out of 48): {sus_f:.1f} (selected) vs {sus_b:.1f} (benchmark) &nbsp;&nbsp;|&nbsp;&nbsp; "
+            f"Overall fiscal health index: {fh_f:.2f} vs {fh_b:.2f}",
+            meta_style,
+        )
+    )
+    story.append(
+        Paragraph(f"Generated {date.today().isoformat()}", meta_style),
+    )
+    story.append(Spacer(1, 0.08 * inch))
+    story.append(
+        HRFlowable(
+            width=rule_w,
+            thickness=0.75,
+            color=colors.HexColor("#94a3b8"),
+            spaceAfter=14,
+        )
+    )
+
+    for raw_line in (body_markdown or "").splitlines():
+        line = raw_line.rstrip()
+        if not line.strip():
+            story.append(Spacer(1, 4))
+            continue
+        story.append(Paragraph(_peer_rec_md_line_to_reportlab_xml(line), body_style))
+
+    story.append(
+        Paragraph(
+            "Draft for discussion only — not legal, financial, or engineering advice. "
+            "Text was produced by an AI model from the peer comparison data summarized above.",
+            foot_style,
+        )
+    )
+    doc.build(story)
+    return buf.getvalue()
 
 
 def pick_fiscal_peer_benchmark(dframe: pd.DataFrame, focal: pd.Series) -> Optional[pd.Series]:
@@ -1390,55 +1718,86 @@ def render_improvement_benchmark_for_city(
         yaxis=dark_axis(title="Rubric points (raw)"),
         xaxis=dict(tickfont=dict(size=11), gridcolor="#0f1e30"),
     )
-    st.plotly_chart(fig_sub, use_container_width=True, key=f"bench_subscores_{chart_key_suffix}")
+    st.plotly_chart(fig_sub, width="stretch", key=f"bench_subscores_{chart_key_suffix}")
 
-    with st.expander(
-        f"How are recommendations for {city_nm}, {state_nm} generated?",
-        expanded=False,
-    ):
-        st.markdown(RECOMMENDATIONS_METHOD_MD)
+    gemini_key = f"peer_gemini_recs_{chart_key_suffix}"
+    resolved_key = _resolve_gemini_api_key()
+    api_ready = bool(resolved_key)
 
-    st.markdown("### Recommendations / suggested actions")
-    recs: list[str] = []
-    if gov_b > gov_f + 0.5:
-        recs.append(
-            f"**Governance**: Align commission scope and decision rights with **{bench['city']}**-style "
-            "practice (clear mandate, reporting cadence, documented authority level)."
+    af, tf = _actions_records(acts_f)
+    ab, tb = _actions_records(acts_b)
+    peer_payload = {
+        "match_summary": {
+            "selected_city": f"{city_nm}, {state_nm}",
+            "benchmark_city": bench_label,
+            "overall_fiscal_health_peer_index_selected": fh_f,
+            "overall_fiscal_health_peer_index_benchmark": fh_b,
+            "abs_fiscal_health_gap": dfh,
+            "total_sustainability_out_of_48_selected": sus_f,
+            "total_sustainability_out_of_48_benchmark": sus_b,
+            "gap_points_benchmark_minus_selected": sus_b - sus_f,
+        },
+        "selected_city": {
+            "rubric_governance_data_analytics_action_planning_and_fiscal": _rubric_fiscal_snapshot(focal),
+            "documented_actions_energy_transport_waste": af,
+            "action_rows_omitted_after_cap": tf,
+        },
+        "benchmark_city_peer": {
+            "rubric_governance_data_analytics_action_planning_and_fiscal": _rubric_fiscal_snapshot(bench),
+            "documented_actions_energy_transport_waste": ab,
+            "action_rows_omitted_after_cap": tb,
+        },
+    }
+
+    if api_ready:
+        if st.button(
+            "Generate peer-based recommendations",
+            key=f"btn_{gemini_key}",
+            help="Uses agent to generate personalized recommendations.",
+        ):
+            try:
+                prompt = _gemini_build_peer_prompt(peer_payload)
+                use_key = _resolve_gemini_api_key()
+                with st.spinner("Calling Gemini…"):
+                    st.session_state[gemini_key] = _gemini_generate_peer_recommendations(prompt, use_key)
+                st.session_state.pop(f"{gemini_key}_err", None)
+            except Exception as exc:  # noqa: BLE001 — surface API/config errors in UI
+                st.session_state[gemini_key] = None
+                st.session_state[f"{gemini_key}_err"] = str(exc)
+        err_key = f"{gemini_key}_err"
+        if st.session_state.get(err_key) and not st.session_state.get(gemini_key):
+            st.error(st.session_state[err_key])
+        elif st.session_state.get(gemini_key):
+            rec_md = st.session_state[gemini_key]
+            st.markdown(rec_md)
+            try:
+                pdf_bytes = _build_peer_recommendations_pdf_bytes(
+                    city_nm=city_nm,
+                    state_nm=state_nm,
+                    bench_label=bench_label,
+                    sus_f=sus_f,
+                    sus_b=sus_b,
+                    fh_f=fh_f,
+                    fh_b=fh_b,
+                    body_markdown=str(rec_md),
+                )
+                st.download_button(
+                    "Download recommendations as PDF",
+                    data=pdf_bytes,
+                    file_name=_slug_peer_rec_pdf_filename(city_nm, state_nm),
+                    mime="application/pdf",
+                    key=f"dl_peer_pdf_{gemini_key}",
+                    help="Clean one-page layout with benchmark context; file name uses the selected city.",
+                )
+            except Exception as pdf_exc:  # noqa: BLE001 — surface layout/deps errors without losing markdown
+                st.caption(f"PDF export unavailable: {pdf_exc}")
+    else:
+        st.info(
+            "Add a Gemini key: use **Gemini (optional)** in the sidebar (placeholder field), "
+            "or set **GOOGLE_API_KEY** / **GEMINI_API_KEY** in the environment, "
+            "or add the same keys to **.streamlit/secrets.toml**. Optional: **GEMINI_MODEL** "
+            "(defaults to `gemini-2.5-flash`)."
         )
-    if da_b > da_f + 0.5:
-        recs.append(
-            "**Data & analytics**: Publish inventories and metrics (energy, fleet, buildings) "
-            "and tie capital decisions to measurable baselines — typical of higher rubric scores."
-        )
-    if ap_b > ap_f + 0.5:
-        recs.append(
-            "**Action planning**: Refresh CAP milestones, interdepartmental owners, and "
-            "funding pathways; mirror the breadth of initiatives seen in the benchmark’s action list."
-        )
-    if c_b > c_f:
-        recs.append(
-            f"**Formal authority**: Explore moving the sustainability commission toward "
-            f"**{COMM_LBL.get(c_b, str(c_b)).lower()}**, matching the benchmark’s level."
-        )
-    if rn_b > rn_f:
-        recs.append(
-            "**Regional ties**: Explore the same regional networks or coalitions the benchmark "
-            "uses—shared programs often help with capacity and funding ideas."
-        )
-    for sec in FOCUS_SECTORS:
-        nf = int(acts_f["sector"].value_counts().get(sec, 0)) if "sector" in acts_f.columns else 0
-        nb = int(acts_b["sector"].value_counts().get(sec, 0)) if "sector" in acts_b.columns else 0
-        if nb > nf:
-            recs.append(
-                f"**{sec}**: Add or document **{sec.lower()}** programs to close the gap "
-                f"({nf} vs {nb} listed actions)."
-            )
-    if not recs:
-        recs.append(
-            "Focus on **incremental rubric gains** across governance, data, and planning — "
-            "the benchmark leads overall; small systematic upgrades in each pillar often compound."
-        )
-    st.markdown("\n".join(f"{i}. {r}" for i, r in enumerate(recs, start=1)))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1511,6 +1870,27 @@ focus_states_list = [s for s in FOCUS_STATES_ORDER if s in df["State"].dropna().
 if not focus_states_list:
     focus_states_list = [compare_states[0]] if compare_states else []
 
+
+def municipality_row_count(frame: pd.DataFrame) -> int:
+    """Rows in frame; collapse duplicate (city, State) pairs so counts match unique municipalities."""
+    if frame is None or frame.empty:
+        return 0
+    if "city" in frame.columns and "State" in frame.columns:
+        return int(frame.drop_duplicates(subset=["city", "State"]).shape[0])
+    return len(frame)
+
+
+_core_states_in_file = frozenset(s for s in FOCUS_STATES_ORDER if s in set(df["State"].dropna()))
+if _core_states_in_file:
+    _df_kpi_scope = df[df["State"].isin(_core_states_in_file)]
+    KPI_CITIES = municipality_row_count(_df_kpi_scope)
+    KPI_STATES = int(_df_kpi_scope["State"].nunique())
+else:
+    KPI_CITIES = municipality_row_count(df)
+    KPI_STATES = int(df["State"].nunique())
+
+# Plotly toolbar: scroll-wheel zoom + double-click reset (typology map)
+PLOTLY_TYPOLOGY_CONFIG: dict = {"scrollZoom": True, "displayModeBar": True, "doubleClick": "reset"}
 # Dashboard view mode (compare vs single-city focus for all tabs)
 VIEW_MODE_COMPARE = "compare_two"
 VIEW_MODE_CITY_A = "city_a_only"
@@ -1685,6 +2065,20 @@ with st.sidebar:
             help=HELP["t1_map_states"],
         )
 
+    st.divider()
+    st.markdown("### Gemini (optional)")
+    st.caption(
+        "For **How Can Cities Improve?** — peer recommendations. Leave blank if the key is already "
+        "set on this machine or in **.streamlit/secrets.toml**."
+    )
+    st.text_input(
+        "Google API key (Gemini)",
+        type="password",
+        placeholder="Paste key here (session only) or use env / secrets",
+        key="gemini_api_key_ui",
+        help=HELP["gemini_api_key"],
+    )
+
 # ── Effective cities (respect dashboard view mode) ─────────────────────────────
 _vm = st.session_state.get("dashboard_view_mode", VIEW_MODE_COMPARE)
 if _vm == VIEW_MODE_CITY_A:
@@ -1731,7 +2125,7 @@ st.markdown("# Municipal Fiscal & Sustainability Dashboard")
 if single_city_mode:
     st.markdown(
         f'<p style="color:#ffffff;font-size:.76rem;margin-top:-10px">'
-        f"{len(df)} cities &nbsp;·&nbsp; {df['State'].nunique()} states &nbsp;·&nbsp; "
+        f"{KPI_CITIES} cities &nbsp;·&nbsp; {KPI_STATES} states &nbsp;·&nbsp; "
         f'<b>Single-city view:</b> <span style="color:#93c5fd">{city1}, {state1}</span>'
         f"</p>",
         unsafe_allow_html=True,
@@ -1739,7 +2133,7 @@ if single_city_mode:
 else:
     st.markdown(
         f'<p style="color:#ffffff;font-size:.76rem;margin-top:-10px">'
-        f"{len(df)} cities &nbsp;·&nbsp; {df['State'].nunique()} states &nbsp;·&nbsp; "
+        f"{KPI_CITIES} cities &nbsp;·&nbsp; {KPI_STATES} states &nbsp;·&nbsp; "
         f'Comparing <b style="color:#ffffff">{city1}, {state1}</b>'
         f' &nbsp;vs&nbsp; '
         f'<b style="color:#fbbf24">{city2}, {state2}</b>'
@@ -1753,8 +2147,8 @@ sus_b = float(r2.get(SUS_COL, 0) or 0) if r2 is not None and SUS_COL in r2 else 
 if single_city_mode:
     k_cols = st.columns(3)
     for col_w, (v, lbl, hk) in zip(k_cols, [
-        (str(len(df)),          "Cities in dataset",   "kpi_cities"),
-        (str(df["State"].nunique()), "States in dataset", "kpi_states"),
+        (str(KPI_CITIES),       "Cities (IL · MI · MN · WI)", "kpi_cities"),
+        (str(KPI_STATES),       "States in core region",    "kpi_states"),
         (f"{sus_a:.1f}/48",     f"{city1} — sustainability", "kpi_sustain"),
     ]):
         with col_w:
@@ -1765,8 +2159,8 @@ if single_city_mode:
 else:
     k_cols = st.columns(4)
     for col_w, (v, lbl, hk) in zip(k_cols, [
-        (str(len(df)),          "Cities",              "kpi_cities"),
-        (str(df["State"].nunique()), "States",         "kpi_states"),
+        (str(KPI_CITIES),       "Cities (IL · MI · MN · WI)", "kpi_cities"),
+        (str(KPI_STATES),       "States in core region",    "kpi_states"),
         (f"{sus_a:.1f}/48",     f"{city1} Sustainability", "kpi_sustain"),
         (f"{sus_b:.1f}/48",     f"{city2} Sustainability", "kpi_sustain"),
     ]):
@@ -1802,11 +2196,19 @@ with T_about:
 with T1:
     st.markdown(
         '<div class="info-banner">'
+        f'<b>What “{PC1_AXIS_LABEL.lower()}” and “liquidity” mean on this map</b><br>'
+        f"<b>{PC1_AXIS_LABEL} (horizontal):</b> a <b>composite</b> fiscal-stress axis from <b>PC1</b> of all standardized "
+        "balance-sheet columns, oriented using the spreadsheet’s <b>Pension Exposure Ratio</b> (when present) as a "
+        f"<b>direction anchor</b>—<b>further right = a lighter long-term load vs. cities in this file</b>, "
+        "not a legal rating. (Still blends debt and other signals—not “pension only.”)<br>"
+        "<b>Liquidity (vertical):</b> the average of <b>Cash &amp; Investment Coverage</b> and "
+        "<b>Net Investment Capacity</b> only (standardized as a pair)—<b>higher = more cash / "
+        "net-investment cushion vs. peers</b>, not overall city wealth.<br><br>"
         '<b>How cluster names are assigned:</b><br>'
-        '• <b>Resilient (Q1)</b>: lower pension burden and higher cash liquidity.<br>'
-        '• <b>Stable (Q2)</b>: lower pension burden but tighter cash liquidity.<br>'
-        '• <b>Pressured (Q3)</b>: higher pension burden, but currently stronger liquidity.<br>'
-        '• <b>Vulnerable (Q4)</b>: higher pension burden and lower liquidity.<br><br>'
+        '• <b>Resilient (Q1)</b>: lower long-term pressure and higher cash liquidity.<br>'
+        '• <b>Stable (Q2)</b>: lower long-term pressure but tighter cash liquidity.<br>'
+        '• <b>Pressured (Q3)</b>: higher long-term pressure, but currently stronger liquidity.<br>'
+        '• <b>Vulnerable (Q4)</b>: higher long-term pressure and lower liquidity.<br><br>'
         '<i>These labels use <b>median splits within your uploaded file</b> (peer-relative), '
         "not an official credit rating or legal standard.</i>"
         '</div>',
@@ -1827,35 +2229,55 @@ with T1:
 
     with st.popover("❓ What this map shows (plain language)"):
         st.markdown(
-            "**Horizontal (pension axis):** built from **PC1** of the financial PCA, oriented so "
-            "**further right = relatively lower pension burden** among cities in this file.\n\n"
+            f"### {PC1_AXIS_LABEL} vs liquidity (plain language)\n\n"
+            f"**{PC1_AXIS_LABEL} (horizontal)** — A **summary stress score** from the first PCA axis of **all** "
+            "standardized fiscal columns, oriented using **Pension Exposure Ratio** (when present) only as a "
+            "**direction anchor**. **Right** = a **lighter** long-term fiscal load than other cities **in this "
+            "spreadsheet**; **left** = a **heavier** load in that *combined* sense. It is **not** a single "
+            "funded-ratio verdict by itself.\n\n"
+            "**Liquidity (vertical)** — **Cash & investment coverage** plus **net investment capacity**, averaged "
+            "after scaling those **two** columns together. **Up** = more **near-term cash / investment headroom** "
+            "vs. peers in the file—not a measure of how “rich” the local economy is.\n\n"
+            "### Technical detail\n\n"
+            f"**Horizontal ({PC1_AXIS_LABEL.lower()}):** built from **PC1** of the financial PCA, oriented so "
+            "**further right = relatively lower long-term fiscal pressure** among cities in this file.\n\n"
             "**Vertical (liquidity axis):** from **cash & investment coverage** and "
             "**net investment capacity** only—**higher = stronger liquidity** vs. peers.\n\n"
             "**Dashed lines:** the **median** of each axis using **all cities in your upload** "
             "(not a legal threshold). They split the full sample into four groups "
             "(Resilient / Stable / Pressured / Vulnerable).\n\n"
             "**State filter (sidebar):** limits **which dots** appear on this map; medians stay the same.\n\n"
+            "**Zoom:** use the **mode bar** (top-right of the chart) for box/lasso zoom, **scroll** with the "
+            "pointer over the map to zoom in/out, or **double-click** to reset the axes.\n\n"
             "**Colors:** each dot’s color is its group. **Stars** mark your selected city or cities "
             "(only if that city’s state is included in the map filter)."
         )
 
-    xm0 = float(df_map["PC1_pension_axis"].min())
-    xm1 = float(df_map["PC1_pension_axis"].max())
-    ym0 = float(df_map["liquidity_axis"].min())
-    ym1 = float(df_map["liquidity_axis"].max())
-    xspan = max(xm1 - xm0, 0.08)
-    yspan = max(ym1 - ym0, 0.08)
-    xpad = xspan * 0.12
-    ypad = yspan * 0.12
+    _px = df_map["PC1_pension_axis"].dropna().to_numpy()
+    _py = df_map["liquidity_axis"].dropna().to_numpy()
+    if _px.size >= 12:
+        xm0, xm1 = map(float, np.percentile(_px, [2, 98]))
+        ym0, ym1 = map(float, np.percentile(_py, [2, 98]))
+    elif _px.size > 0:
+        xm0, xm1 = float(_px.min()), float(_px.max())
+        ym0, ym1 = float(_py.min()), float(_py.max())
+    else:
+        xm0, xm1, ym0, ym1 = -0.1, 0.1, -0.1, 0.1
+    xspan = max(xm1 - xm0, 0.06)
+    yspan = max(ym1 - ym0, 0.06)
+    xpad = xspan * 0.14
+    ypad = yspan * 0.14
     _pm = float(pc1_median)
     _lm = float(liq_median)
-    xr = [min(xm0 - xpad, _pm - xpad * 0.35), max(xm1 + xpad, _pm + xpad * 0.35)]
-    yr = [min(ym0 - ypad, _lm - ypad * 0.35), max(ym1 + ypad, _lm + ypad * 0.35)]
+    _msx = max(0.04, xspan * 0.12)
+    _msy = max(0.04, yspan * 0.12)
+    xr = [min(xm0 - xpad, _pm - _msx), max(xm1 + xpad, _pm + _msx)]
+    yr = [min(ym0 - ypad, _lm - _msy), max(ym1 + ypad, _lm + _msy)]
 
     fig_map = go.Figure()
 
-    # Quadrant shading (x increases → lower pension burden; y increases → liquidity)
-    # Upper-left = high burden + high liq (Q3); upper-right = Q1; lower-left = Q4; lower-right = Q2
+    # Quadrant shading (x increases → lower long-term pressure; y increases → liquidity)
+    # Upper-left = higher pressure + high liq (Q3); upper-right = Q1; lower-left = Q4; lower-right = Q2
     if shade:
         quad_shapes = [
             (xr[0], pc1_median, liq_median, yr[1], "rgba(251,191,36,.05)",  "Q3  PRESSURED",  "#fbbf24",
@@ -1918,7 +2340,7 @@ with T1:
                 "Fiscal Health: %{customdata[3]}<br>"
                 "Population: %{customdata[4]:,}<br>"
                 "Climate Networks: %{customdata[6]}<br>"
-                "Pension axis: %{x:.2f}  ·  Liquidity axis: %{y:.2f}"
+                f"{PC1_AXIS_LABEL}: %{{x:.2f}}  ·  Liquidity axis: %{{y:.2f}}"
                 "<extra></extra>"
             ),
         ))
@@ -1946,14 +2368,14 @@ with T1:
 
     fig_map.update_layout(
         title=dict(
-            text="2×2 Fiscal typology: pension burden × liquidity (median split)",
+            text=f"2×2 Fiscal typology: {PC1_AXIS_LABEL.lower()} × liquidity (median split)",
             font=dict(size=13, color="#f8fafc", family="IBM Plex Sans"),
             x=0.5,
             xanchor="center",
         ),
         **base_chart_layout(height=570, margin=dict(l=55, r=25, t=48, b=58)),
         xaxis=dark_axis(
-            title="Pension axis — higher = lower pension burden (vs. peers)",
+            title=f"{PC1_AXIS_LABEL} — higher = lighter long-term load (vs. peers)",
             range=xr, title_font=dict(size=10),
         ),
         yaxis=dark_axis(
@@ -1961,7 +2383,16 @@ with T1:
             range=yr, title_font=dict(size=10),
         ),
     )
-    st.plotly_chart(fig_map, use_container_width=True, key="map_main")
+    st.plotly_chart(
+        fig_map,
+        width="stretch",
+        key="map_main",
+        config=PLOTLY_TYPOLOGY_CONFIG,
+    )
+    st.caption(
+        "Tip: **scroll** the mouse wheel over the map to zoom, use the **mode bar** (top-right of the chart) "
+        "for box zoom / pan, or **double-click** the plot to reset axes."
+    )
     if _typ_opts and _t1_sel is not None and len(_t1_sel) < len(_typ_opts):
         st.caption(
             f"Showing **{len(df_map)}** cities in **{', '.join(_t1_sel)}**; dashed medians still reflect "
@@ -1992,7 +2423,7 @@ with T1:
             fig_donut.update_layout(
                 **base_chart_layout(height=240, margin=dict(l=5, r=5, t=5, b=5)),
             )
-            st.plotly_chart(fig_donut, use_container_width=True, key="donut")
+            st.plotly_chart(fig_donut, width="stretch", key="donut")
 
     with bc2:
         if SUS_COL in df.columns:
@@ -2056,7 +2487,7 @@ with T1:
                 )
                 st.plotly_chart(
                     fig_city_cluster,
-                    use_container_width=True,
+                    width="stretch",
                     key="bar_city_sus_cluster",
                 )
 
@@ -2093,7 +2524,7 @@ with T2:
                 r_lbls.append(sc_lbl)
                 v1.append(float(r1.get(sc_col, 0) or 0) / sc_max)
         for fc, fl in [
-            ("PC1_pension_axis", "Pension Health"),
+            ("PC1_pension_axis", PC1_AXIS_LABEL),
             ("liquidity_axis",   "Cash Liquidity"),
             ("fiscal_health",    "Fiscal index (vs. peers)"),
         ]:
@@ -2122,7 +2553,7 @@ with T2:
                 gridcolor="#0f1e30",
             ),
         )
-        st.plotly_chart(fig_compare, use_container_width=True, key="head_to_head_bar_single")
+        st.plotly_chart(fig_compare, width="stretch", key="head_to_head_bar_single")
 
         st.markdown("### Financial indicators vs. peer average")
         st.caption("Positive = better than dataset average for that indicator.")
@@ -2148,7 +2579,7 @@ with T2:
                     gridcolor="#0f1e30",
                 ),
             )
-            st.plotly_chart(fig_bar, use_container_width=True, key="fin_bar_single")
+            st.plotly_chart(fig_bar, width="stretch", key="fin_bar_single")
     else:
         # Side-by-side city cards
         cc1, cc2 = st.columns(2)
@@ -2168,7 +2599,7 @@ with T2:
                 v1.append(float(r1.get(sc_col, 0) or 0) / sc_max)
                 v2.append(float(r2.get(sc_col, 0) or 0) / sc_max)
         for fc, fl in [
-            ("PC1_pension_axis", "Pension Health"),
+            ("PC1_pension_axis", PC1_AXIS_LABEL),
             ("liquidity_axis",   "Cash Liquidity"),
             ("fiscal_health",    "Fiscal index (vs. peers)"),
         ]:
@@ -2204,7 +2635,7 @@ with T2:
                 gridcolor="#0f1e30",
             ),
         )
-        st.plotly_chart(fig_compare, use_container_width=True, key="head_to_head_bar")
+        st.plotly_chart(fig_compare, width="stretch", key="head_to_head_bar")
 
         # ── Financial indicators bar ───────────────────────────────────────────
         st.markdown("### Financial indicators compared to peer average")
@@ -2236,7 +2667,7 @@ with T2:
                     gridcolor="#0f1e30",
                 ),
             )
-            st.plotly_chart(fig_bar, use_container_width=True, key="fin_bar")
+            st.plotly_chart(fig_bar, width="stretch", key="fin_bar")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 3  ·  ACTIONS EXPLORER
@@ -2284,7 +2715,7 @@ with T3:
                 yaxis=dark_axis(title="Number of actions"),
                 xaxis=dict(tickfont=dict(size=11), gridcolor="#0f1e30"),
             )
-            st.plotly_chart(fig_sec, use_container_width=True, key="sec_bar_single")
+            st.plotly_chart(fig_sec, width="stretch", key="sec_bar_single")
         else:
             for vals, nm, col_hex in [
                 (s1.values, city1, "#93c5fd"),
@@ -2302,7 +2733,7 @@ with T3:
                 yaxis=dark_axis(title="Number of actions"),
                 xaxis=dict(tickfont=dict(size=11), gridcolor="#0f1e30"),
             )
-            st.plotly_chart(fig_sec, use_container_width=True, key="sec_bar")
+            st.plotly_chart(fig_sec, width="stretch", key="sec_bar")
 
         # ── Mini sector pies ───────────────────────────────────────────────────
         if single_city_mode:
@@ -2319,7 +2750,7 @@ with T3:
                 fig_pie.update_layout(
                     **base_chart_layout(height=220, margin=dict(l=5, r=5, t=5, b=5)),
                 )
-                st.plotly_chart(fig_pie, use_container_width=True, key="pie_single_city")
+                st.plotly_chart(fig_pie, width="stretch", key="pie_single_city")
             else:
                 st.caption("No actions on record for this city.")
         else:
@@ -2339,7 +2770,7 @@ with T3:
                         fig_pie.update_layout(
                             **base_chart_layout(height=200, margin=dict(l=5, r=5, t=5, b=5)),
                         )
-                        st.plotly_chart(fig_pie, use_container_width=True,
+                        st.plotly_chart(fig_pie, width="stretch",
                                         key=f"pie_{city_nm}")
                     else:
                         st.caption("No actions on record for this city.")
@@ -2416,71 +2847,6 @@ with T4:
             else:
                 st.warning(f"**{city2}, {state2}** not found in the dataset.")
 
-    # ── All-city bubble: sustainability vs fiscal health ──────────────────────
-    st.divider()
-    with st.popover("❓ Reading this chart"):
-        st.markdown(
-            "**Horizontal (X):** Overall Fiscal Health index—peer‑scaled balance‑sheet mix; "
-            "**near 0** ≈ typical in this file.\n\n"
-            "**Vertical (Y):** Sustainability rubric total (**out of 48**).\n\n"
-            "**Dot color:** fiscal typology quadrant. **Stars:** your selected city or cities."
-        )
-    if SUS_COL in df.columns:
-        fig_bub = go.Figure()
-        for quad, (_, _, qcol) in QUAD_META.items():
-            sub = df[df["pca_2x2_type"] == quad]
-            if sub.empty:
-                continue
-            sizes = np.clip(
-                np.sqrt(sub["population"].fillna(10_000) / 1_000) * 2.4, 4, 28
-            )
-            fig_bub.add_trace(go.Scatter(
-                x=sub["fiscal_health"], y=sub[SUS_COL],
-                mode="markers", name=qname(quad),
-                marker=dict(size=sizes, color=qcol, opacity=.67,
-                            line=dict(width=1, color="rgba(255,255,255,.07)")),
-                customdata=np.stack([
-                    sub["city"], sub["State"],
-                    sub["population"].fillna(0).astype(int),
-                ], axis=1),
-                hovertemplate=(
-                    "<b>%{customdata[0]}</b>, %{customdata[1]}<br>"
-                    "Population: %{customdata[2]:,}<br>"
-                    "Fiscal Health: %{x:.2f}<br>"
-                    "Sustainability: %{y}/48"
-                    "<extra></extra>"
-                ),
-            ))
-        _bub_stars = [(r1, city1, "#93c5fd")]
-        if not single_city_mode:
-            _bub_stars.append((r2, city2, "#fbbf24"))
-        for row_d, nm, col_hex in _bub_stars:
-            if row_d is not None and SUS_COL in row_d.index:
-                fig_bub.add_trace(go.Scatter(
-                    x=[row_d["fiscal_health"]], y=[row_d[SUS_COL]],
-                    mode="markers+text", name=f"{nm}, {state1}" if row_d is r1 else f"{nm}, {state2}",
-                    text=[nm], textposition="top right",
-                    textfont=dict(size=10, color=col_hex),
-                    marker=dict(size=20, color=col_hex, symbol="star",
-                                line=dict(width=2, color="white")),
-                ))
-        fig_bub.update_layout(
-            title=dict(
-                text=(
-                    "All cities — sustainability vs fiscal health score<br>"
-                    "<sup>Bubble size = population. Hover any city to see details. "
-                    "Selected cities are shown as stars.</sup>"
-                ),
-                font=dict(size=14, color="#f8fafc", family="IBM Plex Sans"),
-                x=0.5,
-                xanchor="center",
-            ),
-            **base_chart_layout(height=460, margin=dict(l=50, r=25, t=62, b=50)),
-            xaxis=dark_axis(title="Overall Fiscal Health (peer index)"),
-            yaxis=dark_axis(title="Sustainability Score (/48)"),
-        )
-        st.plotly_chart(fig_bub, use_container_width=True, key="bubble_all")
-
 # ──────────────────────────────────────────────────────────────────────────────
 # TAB 5  ·  HOW CAN CITIES IMPROVE?  (peer benchmarking)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2508,9 +2874,9 @@ with T5:
         st.markdown(
             "**Benchmark peer:** another city in this file with **similar Overall Fiscal Health** "
             "(the composite fiscal index) but a **higher sustainability score**.\n\n"
-            "**Recommendations:** rule-based lines from rubric and action-count gaps—open "
-            "**How are recommendations for [your city] generated?** in that city’s panel for the exact triggers. "
-            "They are **ideas for discussion**, not directives."
+            "**Recommendations:** use **Generate peer-based recommendations (Gemini 2.5 Flash)** to send full "
+            "action text plus rubric/fiscal snapshots to Gemini—outputs should reflect **benchmark-only** "
+            "evidence. These are **ideas for discussion**, not directives."
         )
     with st.expander(
         "How is Overall Fiscal Health calculated?",
