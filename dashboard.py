@@ -222,6 +222,8 @@ HELP: dict[str, str] = {
     "map_labels": "Shows every city name on the map (can look crowded). Hover still works when off.",
     "map_shade": "Light background colors match the four quadrants split by the dashed median lines.",
     "map_highlight": "Cities outside the chosen state(s) fade so your selection stands out.",
+    "t1_map_states": "Typology Map tab only: plot dots (and the cluster donut below the map) for these states. "
+    "Dashed medians still use every city in your upload.",
     "sus_cluster": "Same 2×2 typology group as the map (median split on pension axis × liquidity axis).",
     "sus_state": "Limit the bar chart to one state, or show all states in the list.",
     "sector_filter": "Actions data only includes Energy, Transport, and Waste in this app.",
@@ -251,7 +253,6 @@ The app checks a few **if / then** rules. Each bullet is added **only** when its
 | **Data & analytics** | **Data & Analytics (/21)** | Same **> 0.5** gap rule. |
 | **Action planning** | **Action Planning (/18)** | Same **> 0.5** gap rule. |
 | **Formal authority** | Sustainability **commission authority level** | Benchmark’s level is **higher** than yours (see dataset coding). |
-| **Climate networks** | Count of **tracked network memberships** in the fiscal sheet | Benchmark has **more** memberships than your city. |
 | **Regional collaboration** | **Regional network count** in the fiscal sheet | Benchmark has **more** ties than your city. |
 | **Energy / Transport / Waste** | Rows in **municipality_actions.xlsx** for that sector | Benchmark has **more listed actions** than your city in the same sector. |
 
@@ -1086,18 +1087,21 @@ def render_focus_sector_pie(
     if total == 0:
         st.caption("No actions on record for this city in the dataset.")
         return
+    # One string per slice (e.g. "Transport 88"): label+value with textposition="outside"
+    # can clip the number for some angles; combined labels stay readable.
+    pie_labels = [f"{s} {v}" for s, v in zip(labels, vals)]
     fig_p = go.Figure(go.Pie(
-        labels=labels,
+        labels=pie_labels,
         values=vals,
         hole=0.52,
         marker_colors=[SEC_COL.get(s, "#475569") for s in labels],
-        textinfo="label+value",
+        textinfo="label",
         textposition="outside",
         textfont=dict(size=10, color="#e2e8f0"),
-        hovertemplate="%{label}: %{value} actions (%{percent})<extra></extra>",
+        hovertemplate="%{label}<br>%{value} actions (%{percent})<extra></extra>",
     ))
     fig_p.update_layout(
-        **base_chart_layout(height=260, margin=dict(l=8, r=8, t=8, b=8)),
+        **base_chart_layout(height=280, margin=dict(l=22, r=22, t=10, b=26)),
         showlegend=False,
     )
     st.plotly_chart(fig_p, use_container_width=True, key=plot_key)
@@ -1289,13 +1293,6 @@ def render_improvement_benchmark_for_city(
             f"**Governance / formal authority**: benchmark has **{COMM_LBL.get(c_b, str(c_b))}** "
             f"for its sustainability commission vs **{COMM_LBL.get(c_f, str(c_f))}** for {city_nm}."
         )
-    cn_f = int(pd.to_numeric(focal.get("climate_network_count"), errors="coerce") or 0)
-    cn_b = int(pd.to_numeric(bench.get("climate_network_count"), errors="coerce") or 0)
-    if cn_b > cn_f:
-        diff_lines.append(
-            f"**Climate networks**: benchmark participates in **{cn_b}** tracked memberships "
-            f"vs **{cn_f}** for {city_nm}, signalling broader multi-city learning and visibility."
-        )
     rn_f = int(pd.to_numeric(focal.get("regional_network_count"), errors="coerce") or 0)
     rn_b = int(pd.to_numeric(bench.get("regional_network_count"), errors="coerce") or 0)
     if rn_b > rn_f:
@@ -1367,11 +1364,6 @@ def render_improvement_benchmark_for_city(
             "Gains are spread across pillars; the benchmark still leads on the **total** score "
             "after matching fiscal capacity — review sub-scores above for nuance."
         )
-    if cn_b > cn_f:
-        drivers.append(
-            "**Institutional embedding**: climate network participation often correlates with "
-            "structured reporting, targets, and staff capacity — areas reflected in the score."
-        )
     st.markdown("\n".join(f"- {d}" for d in drivers))
 
     fig_sub = go.Figure()
@@ -1427,11 +1419,6 @@ def render_improvement_benchmark_for_city(
         recs.append(
             f"**Formal authority**: Explore moving the sustainability commission toward "
             f"**{COMM_LBL.get(c_b, str(c_b)).lower()}**, matching the benchmark’s level."
-        )
-    if cn_b > cn_f:
-        recs.append(
-            "**Networks**: Join or deepen participation in national/regional climate networks "
-            "where the benchmark is active — use their toolkits and peer cohorts."
         )
     if rn_b > rn_f:
         recs.append(
@@ -1686,6 +1673,17 @@ with st.sidebar:
         key="hl_st",
         help=HELP["map_highlight"],
     )
+    _typology_map_state_opts = [
+        s for s in FOCUS_STATES_ORDER if s in df["State"].dropna().unique().tolist()
+    ]
+    if _typology_map_state_opts:
+        st.multiselect(
+            "Typology map — states to plot",
+            options=_typology_map_state_opts,
+            default=_typology_map_state_opts,
+            key="t1_map_states",
+            help=HELP["t1_map_states"],
+        )
 
 # ── Effective cities (respect dashboard view mode) ─────────────────────────────
 _vm = st.session_state.get("dashboard_view_mode", VIEW_MODE_COMPARE)
@@ -1808,10 +1806,24 @@ with T1:
         '• <b>Resilient (Q1)</b>: lower pension burden and higher cash liquidity.<br>'
         '• <b>Stable (Q2)</b>: lower pension burden but tighter cash liquidity.<br>'
         '• <b>Pressured (Q3)</b>: higher pension burden, but currently stronger liquidity.<br>'
-        '• <b>Vulnerable (Q4)</b>: higher pension burden and lower liquidity.'
+        '• <b>Vulnerable (Q4)</b>: higher pension burden and lower liquidity.<br><br>'
+        '<i>These labels use <b>median splits within your uploaded file</b> (peer-relative), '
+        "not an official credit rating or legal standard.</i>"
         '</div>',
         unsafe_allow_html=True,
     )
+
+    _typ_opts = [s for s in FOCUS_STATES_ORDER if s in df["State"].dropna().unique().tolist()]
+    _t1_sel = st.session_state.get("t1_map_states")
+    if _typ_opts:
+        if not _t1_sel:
+            _t1_sel = _typ_opts
+        _t1_sel = [s for s in _t1_sel if s in _typ_opts] or _typ_opts
+        df_map = df[df["State"].isin(_t1_sel)].copy()
+        _t1_sel_set = frozenset(_t1_sel)
+    else:
+        df_map = df
+        _t1_sel_set = None
 
     with st.popover("❓ What this map shows (plain language)"):
         st.markdown(
@@ -1819,15 +1831,26 @@ with T1:
             "**further right = relatively lower pension burden** among cities in this file.\n\n"
             "**Vertical (liquidity axis):** from **cash & investment coverage** and "
             "**net investment capacity** only—**higher = stronger liquidity** vs. peers.\n\n"
-            "**Dashed lines:** the **median** of each axis (not a legal threshold). They split the "
-            "sample into four groups (Resilient / Stable / Pressured / Vulnerable).\n\n"
-            "**Colors:** each dot’s color is its group. **Stars** mark your selected city or cities."
+            "**Dashed lines:** the **median** of each axis using **all cities in your upload** "
+            "(not a legal threshold). They split the full sample into four groups "
+            "(Resilient / Stable / Pressured / Vulnerable).\n\n"
+            "**State filter (sidebar):** limits **which dots** appear on this map; medians stay the same.\n\n"
+            "**Colors:** each dot’s color is its group. **Stars** mark your selected city or cities "
+            "(only if that city’s state is included in the map filter)."
         )
 
-    xpad = (df["PC1_pension_axis"].max() - df["PC1_pension_axis"].min()) * .1
-    ypad = (df["liquidity_axis"].max()   - df["liquidity_axis"].min())   * .1
-    xr = [df["PC1_pension_axis"].min() - xpad, df["PC1_pension_axis"].max() + xpad]
-    yr = [df["liquidity_axis"].min()   - ypad, df["liquidity_axis"].max()   + ypad]
+    xm0 = float(df_map["PC1_pension_axis"].min())
+    xm1 = float(df_map["PC1_pension_axis"].max())
+    ym0 = float(df_map["liquidity_axis"].min())
+    ym1 = float(df_map["liquidity_axis"].max())
+    xspan = max(xm1 - xm0, 0.08)
+    yspan = max(ym1 - ym0, 0.08)
+    xpad = xspan * 0.12
+    ypad = yspan * 0.12
+    _pm = float(pc1_median)
+    _lm = float(liq_median)
+    xr = [min(xm0 - xpad, _pm - xpad * 0.35), max(xm1 + xpad, _pm + xpad * 0.35)]
+    yr = [min(ym0 - ypad, _lm - ypad * 0.35), max(ym1 + ypad, _lm + ypad * 0.35)]
 
     fig_map = go.Figure()
 
@@ -1854,9 +1877,9 @@ with T1:
     fig_map.add_hline(y=liq_median, line_dash="dot", line_color="#18243a", line_width=1.5)
     fig_map.add_vline(x=pc1_median, line_dash="dot", line_color="#18243a", line_width=1.5)
 
-    # All cities grouped by quadrant
+    # Cities on the map (subset by sidebar “Typology map — states to plot” when available)
     for quad, (qn, _, qcol) in QUAD_META.items():
-        sub = df[df["pca_2x2_type"] == quad]
+        sub = df_map[df_map["pca_2x2_type"] == quad]
         if sub.empty:
             continue
         sizes = (
@@ -1907,6 +1930,8 @@ with T1:
     if not single_city_mode and r2 is not None:
         _pairs.append((r2, f"{city2}, {state2}", "#fbbf24", "star-diamond"))
     for row_d, nm, col_hex, sym in _pairs:
+        if _t1_sel_set is not None and str(row_d.get("State", "")) not in _t1_sel_set:
+            continue
         fig_map.add_trace(go.Scatter(
                 x=[row_d["PC1_pension_axis"]],
                 y=[row_d["liquidity_axis"]],
@@ -1937,25 +1962,37 @@ with T1:
         ),
     )
     st.plotly_chart(fig_map, use_container_width=True, key="map_main")
+    if _typ_opts and _t1_sel is not None and len(_t1_sel) < len(_typ_opts):
+        st.caption(
+            f"Showing **{len(df_map)}** cities in **{', '.join(_t1_sel)}**; dashed medians still reflect "
+            "**all** cities in your fiscal file."
+        )
+    elif _typ_opts:
+        st.caption(
+            "Dashed medians divide **every city in your upload**; cluster colors use the same global assignment."
+        )
 
     # Bottom row: cluster donut + sustainability box
     bc1, bc2 = st.columns(2)
     with bc1:
         st.markdown("### Cities per cluster")
-        cnt = df["pca_2x2_type"].value_counts().reset_index()
+        cnt = df_map["pca_2x2_type"].value_counts().reset_index()
         cnt.columns = ["Cluster", "Count"]
-        fig_donut = go.Figure(go.Pie(
-            labels=[qname(c) for c in cnt["Cluster"]],
-            values=cnt["Count"],
-            hole=.55,
-            marker_colors=[qcolor(c) for c in cnt["Cluster"]],
-            textfont=dict(size=10),
-            hovertemplate="%{label}<br>%{value} cities (%{percent})<extra></extra>",
-        ))
-        fig_donut.update_layout(
-            **base_chart_layout(height=240, margin=dict(l=5, r=5, t=5, b=5)),
-        )
-        st.plotly_chart(fig_donut, use_container_width=True, key="donut")
+        if cnt.empty:
+            st.caption("No cities match the current map state filter.")
+        else:
+            fig_donut = go.Figure(go.Pie(
+                labels=[qname(c) for c in cnt["Cluster"]],
+                values=cnt["Count"],
+                hole=.55,
+                marker_colors=[qcolor(c) for c in cnt["Cluster"]],
+                textfont=dict(size=10),
+                hovertemplate="%{label}<br>%{value} cities (%{percent})<extra></extra>",
+            ))
+            fig_donut.update_layout(
+                **base_chart_layout(height=240, margin=dict(l=5, r=5, t=5, b=5)),
+            )
+            st.plotly_chart(fig_donut, use_container_width=True, key="donut")
 
     with bc2:
         if SUS_COL in df.columns:
@@ -2381,12 +2418,6 @@ with T4:
 
     # ── All-city bubble: sustainability vs fiscal health ──────────────────────
     st.divider()
-    st.markdown("### All cities — sustainability vs fiscal health score")
-    st.caption(
-        "Bubble size = population. "
-        "Hover any city to see details. "
-        "Selected cities are shown as stars."
-    )
     with st.popover("❓ Reading this chart"):
         st.markdown(
             "**Horizontal (X):** Overall Fiscal Health index—peer‑scaled balance‑sheet mix; "
@@ -2434,7 +2465,17 @@ with T4:
                                 line=dict(width=2, color="white")),
                 ))
         fig_bub.update_layout(
-            **base_chart_layout(height=420, margin=dict(l=50, r=25, t=15, b=50)),
+            title=dict(
+                text=(
+                    "All cities — sustainability vs fiscal health score<br>"
+                    "<sup>Bubble size = population. Hover any city to see details. "
+                    "Selected cities are shown as stars.</sup>"
+                ),
+                font=dict(size=14, color="#f8fafc", family="IBM Plex Sans"),
+                x=0.5,
+                xanchor="center",
+            ),
+            **base_chart_layout(height=460, margin=dict(l=50, r=25, t=62, b=50)),
             xaxis=dark_axis(title="Overall Fiscal Health (peer index)"),
             yaxis=dark_axis(title="Sustainability Score (/48)"),
         )
