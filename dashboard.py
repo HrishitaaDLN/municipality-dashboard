@@ -872,8 +872,8 @@ def render_city_card(row: pd.Series, accent: str) -> None:
     lbl, bcls, _ = QUAD_META.get(row.get("pca_2x2_type", ""), ("—", "q2", ""))
     cl  = int(row.get("commission_authority_level ", 0) or 0)
     rnc = int(row.get("regional_network_count", 0) or 0)
-    sus = row.get(SUS_COL, "N/A")
-    sus_str = f"{sus:.0f}/48" if isinstance(sus, (int, float)) else "N/A"
+    sus = pd.to_numeric(row.get(SUS_COL), errors="coerce") if SUS_COL in row.index else np.nan
+    sus_str = f"{float(sus):.0f}/48" if pd.notna(sus) else "N/A"
 
     st.markdown(f"""
     <div class="ccard cc-{bcls}">
