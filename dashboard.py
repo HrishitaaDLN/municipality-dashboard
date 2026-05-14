@@ -250,7 +250,6 @@ HELP: dict[str, str] = {
     "imp_sus_sel": "Your city’s sustainability rubric total (from the spreadsheet, out of 48).",
     "imp_sus_bench": "The auto-picked peer city’s sustainability total for the same rubric.",
     "imp_gap": "Benchmark score minus your city’s score on the rubric total (larger = more headroom vs. this peer).",
-    "gemini_api_key": "Optional. Paste a Google AI key for Gemini; kept in this session only unless you use env/secrets. Leave empty if GOOGLE_API_KEY is already set on the machine.",
 }
 
 # How benchmark recommendations are built (shown in “How Can Cities Improve?”)
@@ -277,7 +276,7 @@ None of the thresholds above fired, so you see one **generic** line about small 
 Recommendations **do not** read action text word-for-word; they only react to **counts and rubric fields** present in your files. Update the spreadsheet to improve the quality of triggers.
 
 **Optional — Gemini peer recommendations**  
-The **Generate peer-based recommendations** control (same tab) sends full Energy/Transport/Waste action rows plus rubric/fiscal JSON for both cities to **Google Gemini**; that path is separate from this rule table. Configure a key via the sidebar **Gemini (optional)** field, **`GOOGLE_API_KEY`** / **`GEMINI_API_KEY`** in the environment, or **`.streamlit/secrets.toml`**.
+The **Generate peer-based recommendations** control (same tab) sends full Energy/Transport/Waste action rows plus rubric/fiscal JSON for both cities to **Google Gemini**; that path is separate from this rule table. Configure a key with **`GOOGLE_API_KEY`** / **`GEMINI_API_KEY`** in the environment or Streamlit secrets (same entries as local **`.streamlit/secrets.toml`**).
 """.strip()
 
 
@@ -1190,13 +1189,7 @@ def _rubric_fiscal_snapshot(row: pd.Series) -> dict:
 
 
 def _resolve_gemini_api_key() -> str:
-    """Sidebar session key → environment → Streamlit secrets. Returns '' if unset (never raises)."""
-    try:
-        ui = str(st.session_state.get("gemini_api_key_ui") or "").strip()
-    except Exception:
-        ui = ""
-    if ui:
-        return ui
+    """Environment variables → Streamlit secrets. Returns '' if unset (never raises)."""
     for env_k in ("GOOGLE_API_KEY", "GEMINI_API_KEY"):
         v = (os.environ.get(env_k) or "").strip()
         if v:
@@ -1245,8 +1238,8 @@ def _gemini_generate_peer_recommendations(prompt: str, api_key: str) -> str:
     key = (api_key or "").strip()
     if not key:
         raise RuntimeError(
-            "Missing API key: paste it under **Gemini (optional)** in the sidebar, "
-            "or set **GOOGLE_API_KEY** / **GEMINI_API_KEY** (or add the same keys to **.streamlit/secrets.toml**)."
+            "Missing API key: set **GOOGLE_API_KEY** or **GEMINI_API_KEY** in the environment "
+            "or Streamlit secrets (same keys as in local **.streamlit/secrets.toml**)."
         )
     model_id = os.environ.get("GEMINI_MODEL", GEMINI_DEFAULT_MODEL).strip() or GEMINI_DEFAULT_MODEL
     genai.configure(api_key=key)
@@ -1753,7 +1746,7 @@ def render_improvement_benchmark_for_city(
         if st.button(
             "Generate peer-based recommendations",
             key=f"btn_{gemini_key}",
-            help="Uses agent to generate personalized recommendations.",
+            help="Calls Google Gemini when GOOGLE_API_KEY or GEMINI_API_KEY is set (environment or Streamlit secrets).",
         ):
             try:
                 prompt = _gemini_build_peer_prompt(peer_payload)
@@ -1792,11 +1785,11 @@ def render_improvement_benchmark_for_city(
             except Exception as pdf_exc:  # noqa: BLE001 — surface layout/deps errors without losing markdown
                 st.caption(f"PDF export unavailable: {pdf_exc}")
     else:
-        st.info(
-            "Add a Gemini key: use **Gemini (optional)** in the sidebar (placeholder field), "
-            "or set **GOOGLE_API_KEY** / **GEMINI_API_KEY** in the environment, "
-            "or add the same keys to **.streamlit/secrets.toml**. Optional: **GEMINI_MODEL** "
-            "(defaults to `gemini-2.5-flash`)."
+        st.caption(
+            "**Peer recommendations (Gemini) are optional** — the rest of the dashboard works without a key. "
+            "To use that feature, set **GOOGLE_API_KEY** or **GEMINI_API_KEY** in the environment or Streamlit "
+            "secrets (same as local **.streamlit/secrets.toml**). **GEMINI_MODEL** is optional "
+            "(default `gemini-2.5-flash`)."
         )
 
 
@@ -2064,20 +2057,6 @@ with st.sidebar:
             key="t1_map_states",
             help=HELP["t1_map_states"],
         )
-
-    st.divider()
-    st.markdown("### Gemini (optional)")
-    st.caption(
-        "For **How Can Cities Improve?** — peer recommendations. Leave blank if the key is already "
-        "set on this machine or in **.streamlit/secrets.toml**."
-    )
-    st.text_input(
-        "Google API key (Gemini)",
-        type="password",
-        placeholder="Paste key here (session only) or use env / secrets",
-        key="gemini_api_key_ui",
-        help=HELP["gemini_api_key"],
-    )
 
 # ── Effective cities (respect dashboard view mode) ─────────────────────────────
 _vm = st.session_state.get("dashboard_view_mode", VIEW_MODE_COMPARE)

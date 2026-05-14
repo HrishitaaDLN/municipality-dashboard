@@ -26,7 +26,7 @@ The UI uses a **dark, high-contrast theme** tuned in `.streamlit/config.toml` fo
 
   `streamlit`, `plotly`, `pandas`, `numpy`, `scikit-learn`, `openpyxl`, `google-generativeai`
 
-**Optional — AI peer recommendations (How Can Cities Improve?)** Prefer **`frontend/.streamlit/secrets.toml`** (see **§4b**); or paste a key in the sidebar **Gemini (optional)** field (session only), or set **`GOOGLE_API_KEY`** / **`GEMINI_API_KEY`** in the environment. Optional **`GEMINI_MODEL`** (default **`gemini-2.5-flash`**).
+**Optional — AI peer recommendations (How Can Cities Improve?)** Set **`GOOGLE_API_KEY`** / **`GEMINI_API_KEY`** via **`frontend/.streamlit/secrets.toml`** locally (see **§4b**), the host environment, or Streamlit Cloud **Secrets**. Optional **`GEMINI_MODEL`** (default **`gemini-2.5-flash`**).
 
 ## Quick start
 
