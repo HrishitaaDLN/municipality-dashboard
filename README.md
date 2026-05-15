@@ -9,11 +9,10 @@ An interactive **[Streamlit](https://streamlit.io/)** app for exploring **Midwes
 | Area | What you get |
 |------|----------------|
 | **About** | Methodology for the **2×2 fiscal typology** (PCA **long-term pressure** axis, liquidity axis, median split) and how it relates to **Overall Fiscal Health**. |
-| **Typology map** | Interactive 2×2 plot with **corrected quadrant shading** (labels match corners), optional population-sized bubbles, and sustainability bars by cluster. |
-| **City vs. city** | Side-by-side profile cards, normalized sustainability + fiscal metrics, and financial-indicator bars vs. the peer average. |
-| **Actions explorer** | Sector counts, mini pies, filterable side-by-side action cards, and CSV export for the two selected cities. |
-| **City profiles** | Deep profiles for each selected city (sustainability, fiscal metrics, and typology context). |
 | **How can cities improve?** | For **City A** and **City B** separately: auto-matched **benchmark peers** with similar **Overall Fiscal Health** but higher sustainability scores; sector pies; action comparisons; narrative gaps and recommendations. |
+| **City profiles** | Deep profiles for each selected city (sustainability, fiscal metrics, and typology context). |
+| **Actions explorer** | Sector counts, mini pies, filterable side-by-side action cards, and CSV export for the two selected cities. |
+| **Typology map** | Interactive 2×2 plot with **corrected quadrant shading** (labels match corners), optional population-sized bubbles, and sustainability bars by cluster. |
 
 The UI uses a **dark, high-contrast theme** tuned in `.streamlit/config.toml` for long sessions and presentations.
 
@@ -94,7 +93,7 @@ Streamlit prints a local URL (usually `http://localhost:8501`). Open it in your 
 1. In the **sidebar**, under **Compare cities**, pick **State** and **City** for **City A** and **City B** (used when you are comparing two places).
 2. Under **Dashboard view**, choose **Compare City A & City B** (default), **City A only**, **City B only**, or **Single city — Illinois, Michigan, Minnesota, or Wisconsin**. The last option shows **Focus state** and **Focus city** dropdowns (only those four states). **Single-city modes** show that municipality alone on **every** tab (typology highlight, profiles, actions, peer improvement, etc.).
 3. Use **Map options** to toggle bubble scaling, labels, quadrant shading, and state highlighting.
-4. Open **How Can Cities Improve?** for peer benchmarks; in single-city mode there is one panel (no City A / B sub-tabs). Expand **How is Overall Fiscal Health calculated?** for the fiscal index, and **How are recommendations for … generated?** (under each city’s charts) for the rules behind suggested actions.
+4. Open **How Can Cities Improve?** (second tab, next to **About**) for peer benchmarks; in single-city mode there is one panel (no City A / B sub-tabs). Expand **How is Overall Fiscal Health calculated?** for the fiscal index, and **How are recommendations for … generated?** (under each city’s charts) for the rules behind suggested actions.
 
 ---
 

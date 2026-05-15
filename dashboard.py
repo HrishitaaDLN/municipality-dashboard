@@ -363,47 +363,6 @@ p, li, label, span, div {
     margin-top: 5px;
 }
 
-/* ── City comparison card ─────────────────────────────── */
-.ccard {
-    border-radius: 12px;
-    padding: 18px 20px;
-    border: 1px solid #1e293b;
-}
-
-.cc-q1 {
-    background: linear-gradient(135deg,rgba(52,211,153,.12),transparent);
-    border-top: 3px solid #34d399;
-}
-
-.cc-q2 {
-    background: linear-gradient(135deg,rgba(96,165,250,.12),transparent);
-    border-top: 3px solid #60a5fa;
-}
-
-.cc-q3 {
-    background: linear-gradient(135deg,rgba(251,191,36,.12),transparent);
-    border-top: 3px solid #fbbf24;
-}
-
-.cc-q4 {
-    background: linear-gradient(135deg,rgba(248,113,113,.12),transparent);
-    border-top: 3px solid #f87171;
-}
-
-.cname  {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.3rem;
-    margin-bottom: 2px;
-    color: #ffffff;
-}
-
-.cstate {
-    font-size: .7rem;
-    color: #cbd5e1;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
 /* ── Cluster badge ────────────────────────────────────── */
 .badge {
     display: inline-block;
@@ -804,7 +763,7 @@ def load_fiscal(raw: bytes) -> pd.DataFrame:
     # ── Overall fiscal health composite ──────────────────────────────────────
     df["fiscal_health"] = X_norm.mean(axis=1)
 
-    # ── Pre-compute z-scores for the bar chart in City vs City ────────────────
+    # ── Pre-compute z-scores (financial bars vs. peer average) ───────────────
     z_scores = pd.DataFrame(
         StandardScaler().fit_transform(df[fin]),
         columns=[f"_z_{c}" for c in fin],
@@ -866,36 +825,6 @@ def load_actions(raw: bytes) -> pd.DataFrame:
 # ══════════════════════════════════════════════════════════════════════════════
 # MODULE-LEVEL RENDER FUNCTIONS
 # ══════════════════════════════════════════════════════════════════════════════
-
-def render_city_card(row: pd.Series, accent: str) -> None:
-    """Full-width city summary card for the City vs City tab."""
-    lbl, bcls, _ = QUAD_META.get(row.get("pca_2x2_type", ""), ("—", "q2", ""))
-    cl  = int(row.get("commission_authority_level ", 0) or 0)
-    rnc = int(row.get("regional_network_count", 0) or 0)
-    sus = pd.to_numeric(row.get(SUS_COL), errors="coerce") if SUS_COL in row.index else np.nan
-    sus_str = f"{float(sus):.0f}/48" if pd.notna(sus) else "N/A"
-
-    st.markdown(f"""
-    <div class="ccard cc-{bcls}">
-      <div class="cname">{row["city"]}</div>
-      <div class="cstate">{row.get("State", "")}</div>
-      <span class="badge b{bcls}">{lbl}</span>
-      <div style="margin-top:13px">
-        {mrow("Population",          f"{int(row.get('population', 0) or 0):,}")}
-        {mrow("Median Household Income", f"${int(row.get('Median Income', 0) or 0):,}")}
-        {mrow("Per Capita Income",   f"${int(row.get('Per Capita', 0) or 0):,}")}
-        {mrow("Sustainability Score",sus_str)}
-        {mrow(PC1_AXIS_LABEL, f"{row.get('PC1_pension_axis', 0):.2f}")}
-        {mrow("Cash liquidity",  f"{row.get('liquidity_axis', 0):.2f}")}
-        {mrow("Overall Fiscal Health (vs. peers)", f"{row.get('fiscal_health', 0):.2f}")}
-        {mrow("Regional Networks",   str(rnc))}
-        {mrow("Commission Authority",COMM_LBL.get(cl, f"Level {cl}"))}
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.markdown('<div class="sec-lbl">Climate network memberships</div>', unsafe_allow_html=True)
-    st.markdown(net_pills_html(row), unsafe_allow_html=True)
-
 
 def render_full_profile(row: pd.Series, accent: str,
                         fin: list[str], key_suffix: str) -> None:
@@ -1849,8 +1778,6 @@ if action_bytes:
 
 # ── Pre-compute derived lists used in multiple tabs ───────────────────────────
 fin_avail  = [c for c in FIN_COLS if c in df.columns]
-z_cols     = [f"_z_{c}" for c in fin_avail]
-fin_labels = [c.split("(")[0].strip()[:26] for c in fin_avail]
 pc1_median = df["PC1_pension_axis"].median()
 liq_median = df["liquidity_axis"].median()
 sus_mean   = df[SUS_COL].mean() if SUS_COL in df.columns else 0.0
@@ -2154,13 +2081,12 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════════════════════════════════════════
-T_about, T5, T1, T2, T3, T4 = st.tabs([
+T_about, T5, T4, T3, T1 = st.tabs([
     "About",
     "How Can Cities Improve?",
-    "🗺️  Typology Map",
-    "⚖️  City vs City",
-    "⚡  Actions Explorer",
     "🔬  City Profiles",
+    "⚡  Actions Explorer",
+    "🗺️  Typology Map",
 ])
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2532,185 +2458,7 @@ with T1:
                 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TAB 2  ·  CITY vs CITY
-# ──────────────────────────────────────────────────────────────────────────────
-with T2:
-    with st.popover("❓ This tab — quick definitions"):
-        st.markdown(
-            "**City cards:** key fiscal and sustainability fields from your spreadsheet.\n\n"
-            "**Normalized charts (0–1):** each metric is scaled to this dataset’s range so you compare "
-            "*patterns*, not raw dollars.\n\n"
-            "**Bars vs. peer average:** z‑scores vs. all cities in the file—**zero** is typical; "
-            "**positive** = better than average on that indicator."
-        )
-    if r1 is None or r2 is None:
-        missing = [
-            f"**{city1}, {state1}**" if r1 is None else None,
-            f"**{city2}, {state2}**" if r2 is None else None,
-        ]
-        st.warning(
-            "City not found in dataset: "
-            + " and ".join(m for m in missing if m)
-            + ". Please check the sidebar selection."
-        )
-    elif single_city_mode:
-        st.caption("Single-city view — comparing this municipality to itself is hidden; see scores vs. peers below.")
-        render_city_card(r1, "#93c5fd")
-        st.divider()
-        st.markdown("### Sustainability & fiscal profile (normalized)")
-        r_lbls, v1 = [], []
-        for sc_col, sc_lbl, sc_max in SUS_SUBS:
-            if sc_col in df.columns:
-                r_lbls.append(sc_lbl)
-                v1.append(float(r1.get(sc_col, 0) or 0) / sc_max)
-        for fc, fl in [
-            ("PC1_pension_axis", PC1_AXIS_LABEL),
-            ("liquidity_axis",   "Cash Liquidity"),
-            ("fiscal_health",    "Fiscal index (vs. peers)"),
-        ]:
-            mn, mx = df[fc].min(), df[fc].max()
-            r_lbls.append(fl)
-            v1.append((float(r1.get(fc, mn)) - mn) / (mx - mn + 1e-9))
-        fig_compare = go.Figure()
-        fig_compare.add_trace(go.Bar(
-            name=f"{city1}, {state1}",
-            x=r_lbls,
-            y=v1,
-            marker_color="#93c5fd",
-            opacity=0.84,
-        ))
-        fig_compare.update_layout(
-            **base_chart_layout(height=370, margin=dict(l=45, r=15, t=30, b=85)),
-            yaxis=dark_axis(
-                title="Normalized score (0-1)",
-                range=[0, 1],
-                zeroline=True,
-                zerolinecolor="#1a3050",
-            ),
-            xaxis=dict(
-                tickangle=-25,
-                tickfont=dict(size=9),
-                gridcolor="#0f1e30",
-            ),
-        )
-        st.plotly_chart(fig_compare, width="stretch", key="head_to_head_bar_single")
-
-        st.markdown("### Financial indicators vs. peer average")
-        st.caption("Positive = better than dataset average for that indicator.")
-        if z_cols and all(zc in df.columns for zc in z_cols):
-            fig_bar = go.Figure()
-            fig_bar.add_trace(go.Bar(
-                name=city1,
-                x=fin_labels,
-                y=[float(r1[zc]) for zc in z_cols],
-                marker_color="#93c5fd",
-                opacity=0.82,
-            ))
-            fig_bar.update_layout(
-                **base_chart_layout(height=320, margin=dict(l=45, r=15, t=15, b=100)),
-                yaxis=dark_axis(
-                    title="Deviation from average",
-                    zeroline=True,
-                    zerolinecolor="#1a3050",
-                ),
-                xaxis=dict(
-                    tickangle=-38,
-                    tickfont=dict(size=8),
-                    gridcolor="#0f1e30",
-                ),
-            )
-            st.plotly_chart(fig_bar, width="stretch", key="fin_bar_single")
-    else:
-        # Side-by-side city cards
-        cc1, cc2 = st.columns(2)
-        with cc1:
-            render_city_card(r1, "#93c5fd")
-        with cc2:
-            render_city_card(r2, "#fbbf24")
-
-        st.divider()
-
-        # ── Head-to-head comparison (normalized bar chart) ────────────────────
-        st.markdown("### Head-to-head comparison")
-        r_lbls, v1, v2 = [], [], []
-        for sc_col, sc_lbl, sc_max in SUS_SUBS:
-            if sc_col in df.columns:
-                r_lbls.append(sc_lbl)
-                v1.append(float(r1.get(sc_col, 0) or 0) / sc_max)
-                v2.append(float(r2.get(sc_col, 0) or 0) / sc_max)
-        for fc, fl in [
-            ("PC1_pension_axis", PC1_AXIS_LABEL),
-            ("liquidity_axis",   "Cash Liquidity"),
-            ("fiscal_health",    "Fiscal index (vs. peers)"),
-        ]:
-            mn, mx = df[fc].min(), df[fc].max()
-            r_lbls.append(fl)
-            v1.append((float(r1.get(fc, mn)) - mn) / (mx - mn + 1e-9))
-            v2.append((float(r2.get(fc, mn)) - mn) / (mx - mn + 1e-9))
-
-        fig_compare = go.Figure()
-        for vals, nm, col_hex in [
-            (v1, f"{city1}, {state1}", "#93c5fd"),
-            (v2, f"{city2}, {state2}", "#fbbf24"),
-        ]:
-            fig_compare.add_trace(go.Bar(
-                name=nm,
-                x=r_lbls,
-                y=vals,
-                marker_color=col_hex,
-                opacity=.84,
-            ))
-        fig_compare.update_layout(
-            **base_chart_layout(height=370, margin=dict(l=45, r=15, t=30, b=85)),
-            barmode="group",
-            yaxis=dark_axis(
-                title="Normalized score (0-1)",
-                range=[0, 1],
-                zeroline=True,
-                zerolinecolor="#1a3050",
-            ),
-            xaxis=dict(
-                tickangle=-25,
-                tickfont=dict(size=9),
-                gridcolor="#0f1e30",
-            ),
-        )
-        st.plotly_chart(fig_compare, width="stretch", key="head_to_head_bar")
-
-        # ── Financial indicators bar ───────────────────────────────────────────
-        st.markdown("### Financial indicators compared to peer average")
-        st.caption(
-            "Bars show how far each city sits above or below the dataset average "
-            "for each financial indicator. Positive = better position."
-        )
-        if z_cols and all(zc in df.columns for zc in z_cols):
-            fig_bar = go.Figure()
-            fig_bar.add_trace(go.Bar(
-                name=city1, x=fin_labels,
-                y=[float(r1[zc]) for zc in z_cols],
-                marker_color="#93c5fd", opacity=.82,
-            ))
-            fig_bar.add_trace(go.Bar(
-                name=city2, x=fin_labels,
-                y=[float(r2[zc]) for zc in z_cols],
-                marker_color="#fbbf24", opacity=.82,
-            ))
-            fig_bar.update_layout(
-                **base_chart_layout(height=320, margin=dict(l=45, r=15, t=15, b=100)),
-                barmode="group",
-                yaxis=dark_axis(
-                    title="Deviation from average",
-                    zeroline=True, zerolinecolor="#1a3050",
-                ),
-                xaxis=dict(
-                    tickangle=-38, tickfont=dict(size=8),
-                    gridcolor="#0f1e30",
-                ),
-            )
-            st.plotly_chart(fig_bar, width="stretch", key="fin_bar")
-
-# ──────────────────────────────────────────────────────────────────────────────
-# TAB 3  ·  ACTIONS EXPLORER
+# TAB  ·  ACTIONS EXPLORER
 # ──────────────────────────────────────────────────────────────────────────────
 with T3:
     if df_act is None:
@@ -2866,7 +2614,7 @@ with T3:
                 )
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TAB 4  ·  CITY PROFILES
+# TAB  ·  CITY PROFILES
 # ──────────────────────────────────────────────────────────────────────────────
 with T4:
     if single_city_mode:
