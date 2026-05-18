@@ -133,8 +133,10 @@ BASE_DIR = Path(__file__).resolve().parent
 DISK_FISCAL  = BASE_DIR / "midwest data (1).xlsx"
 DISK_ACTIONS = BASE_DIR / "municipality_actions.xlsx"
 PROJECT_RESULTS_DIR = BASE_DIR.parent / "Extract financial data" / "Results"
-DISK_CITY_SUMMARY = PROJECT_RESULTS_DIR / "city_summary.csv"
-DISK_ALL_PROJECTS = PROJECT_RESULTS_DIR / "all_projects.csv"
+DISK_CITY_SUMMARY = BASE_DIR / "city_summary.csv"
+DISK_ALL_PROJECTS = BASE_DIR / "all_projects.csv"
+FALLBACK_CITY_SUMMARY = PROJECT_RESULTS_DIR / "city_summary.csv"
+FALLBACK_ALL_PROJECTS = PROJECT_RESULTS_DIR / "all_projects.csv"
 
 # ── Friendly axis/metric labels for municipality audiences ────────────────────
 FRIENDLY: dict[str, str] = {
@@ -1908,9 +1910,11 @@ if action_bytes:
 df_city_summary: Optional[pd.DataFrame] = None
 df_projects: Optional[pd.DataFrame] = None
 try:
-    with open(DISK_CITY_SUMMARY, "rb") as fh:
+    city_summary_path = DISK_CITY_SUMMARY if DISK_CITY_SUMMARY.exists() else FALLBACK_CITY_SUMMARY
+    all_projects_path = DISK_ALL_PROJECTS if DISK_ALL_PROJECTS.exists() else FALLBACK_ALL_PROJECTS
+    with open(city_summary_path, "rb") as fh:
         city_summary_bytes = fh.read()
-    with open(DISK_ALL_PROJECTS, "rb") as fh:
+    with open(all_projects_path, "rb") as fh:
         all_projects_bytes = fh.read()
     df_city_summary, df_projects = load_implemented_projects(city_summary_bytes, all_projects_bytes)
     valid_pairs = frozenset(
@@ -1931,7 +1935,8 @@ try:
     )
     df_projects = df_projects[keep_projects].reset_index(drop=True)
 except FileNotFoundError:
-    st.warning(f"Implemented project files not found: {DISK_CITY_SUMMARY} / {DISK_ALL_PROJECTS}")
+    # Streamlit Cloud may deploy only the frontend folder; implemented projects are optional.
+    pass
 except Exception as exc:
     st.warning(f"Could not load implemented project data: {exc}")
 
