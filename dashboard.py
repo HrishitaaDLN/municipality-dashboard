@@ -2503,6 +2503,7 @@ if st.session_state["guided_step"] == GUIDED_ABOUT:
     st.button("State explorer", type="primary", on_click=_go_to_state_explorer)
     st.markdown("---")
     st.markdown(ABOUT_PAGE_MD)
+    st.button("Continue to state explorer", type="primary", on_click=_go_to_state_explorer)
     st.markdown("<br>", unsafe_allow_html=True)
     st.stop()
 
