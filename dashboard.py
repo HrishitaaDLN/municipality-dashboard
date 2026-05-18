@@ -2055,6 +2055,14 @@ def _go_back_to_state() -> None:
     st.session_state["guided_step"] = GUIDED_STATE
 
 
+def _go_back_one_step() -> None:
+    current = st.session_state.get("guided_step", GUIDED_ABOUT)
+    if current == GUIDED_CITY:
+        st.session_state["guided_step"] = GUIDED_STATE
+    else:
+        st.session_state["guided_step"] = GUIDED_ABOUT
+
+
 _sync_guided_cities_for_state()
 
 
@@ -2444,15 +2452,22 @@ def _render_city_selection(selected_state: str) -> tuple[str, str, bool]:
 
 with st.sidebar:
     st.markdown("## Navigation")
+    current_step = st.session_state.get("guided_step", GUIDED_ABOUT)
     step_label = {
         GUIDED_ABOUT: "1. About",
         GUIDED_STATE: "2. State explorer",
         GUIDED_CITY: "3. City analysis",
-    }.get(st.session_state.get("guided_step"), "1. About")
+    }.get(current_step, "1. About")
     st.caption(f"Current step: **{step_label}**")
-    st.button("About", key="nav_about", on_click=_go_to_about, width="stretch")
-    st.button("State explorer", key="nav_state", on_click=_go_to_state_explorer, width="stretch")
-    if st.session_state.get("guided_step") == GUIDED_CITY:
+    st.button("Return home", key="nav_home", on_click=_go_to_about, width="stretch")
+    st.button(
+        "State explorer",
+        key="nav_state",
+        on_click=_go_to_state_explorer,
+        type="primary" if current_step == GUIDED_ABOUT else "secondary",
+        width="stretch",
+    )
+    if current_step == GUIDED_CITY:
         st.button("City analysis", key="nav_city", on_click=_go_to_city_selection, width="stretch")
 
 
@@ -2478,18 +2493,30 @@ _render_guided_header(
 )
 
 if st.session_state["guided_step"] == GUIDED_ABOUT:
+    st.markdown(
+        '<div class="info-banner" style="border-left-color:#60a5fa">'
+        "<b>Next step:</b> Click the blue <b>State explorer</b> button to choose a state "
+        "and review city clusters before selecting cities."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.button("State explorer", type="primary", on_click=_go_to_state_explorer)
+    st.markdown("---")
     st.markdown(ABOUT_PAGE_MD)
     st.markdown("<br>", unsafe_allow_html=True)
-    st.button("Continue to state explorer", type="primary", on_click=_go_to_state_explorer)
     st.stop()
 
 if st.session_state["guided_step"] == GUIDED_STATE:
+    st.button("← Back to home", on_click=_go_to_about)
+    st.button("Continue to city analysis", type="primary", on_click=_go_to_city_selection)
+    st.markdown("---")
     _render_state_explorer(selected_state)
     st.markdown("<br>", unsafe_allow_html=True)
-    st.button("Continue to city analysis", type="primary", on_click=_go_to_city_selection)
+    st.button("Continue to city analysis", on_click=_go_to_city_selection)
     st.stop()
 
 st.markdown("## Step 3: City analysis")
+st.button("← Back to state explorer", on_click=_go_back_to_state)
 st.caption("Change the selected city or same-state comparison city here if needed.")
 city1, city2, single_city_mode = _render_city_selection(selected_state)
 r1 = get_row(city1, selected_state)
