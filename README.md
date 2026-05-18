@@ -8,11 +8,11 @@ An interactive **[Streamlit](https://streamlit.io/)** app for exploring **Midwes
 
 | Area | What you get |
 |------|----------------|
-| **About** | Methodology for the **2×2 fiscal typology** (PCA **long-term pressure** axis, liquidity axis, median split) and how it relates to **Overall Fiscal Health**. |
-| **How can cities improve?** | For **City A** and **City B** separately: auto-matched **benchmark peers** with similar **Overall Fiscal Health** but higher sustainability scores; sector pies; action comparisons; narrative gaps and recommendations. |
-| **City profiles** | Deep profiles for each selected city (sustainability, fiscal metrics, and typology context). |
-| **Actions explorer** | Sector counts, mini pies, filterable side-by-side action cards, and CSV export for the two selected cities. |
-| **Typology map** | Interactive 2×2 plot with **corrected quadrant shading** (labels match corners), optional population-sized bubbles, and sustainability bars by cluster. |
+| **About** | First page users see; explains the **2×2 fiscal typology** (PCA **long-term pressure** axis, liquidity axis, median split) and how it relates to **Overall Fiscal Health**. |
+| **State explorer** | Guided state selection for Illinois, Michigan, Minnesota, or Wisconsin, with city clusters and sustainability scores by cluster. |
+| **City profiles** | Deep profiles for one selected city or two same-state cities (sustainability, fiscal metrics, and typology context). |
+| **Actions explorer** | Separates **planned actions** from sustainability reports and **implemented projects** from financial project extracts; includes sector pies, filterable cards, descriptions, and CSV export for planned actions. |
+| **How can cities improve?** | Auto-matched **benchmark peers** with similar **Overall Fiscal Health** but higher sustainability scores; action comparisons; narrative gaps; Gemini recommendations and PDF export. |
 
 The UI uses a **dark, high-contrast theme** tuned in `.streamlit/config.toml` for long sessions and presentations.
 
@@ -23,7 +23,7 @@ The UI uses a **dark, high-contrast theme** tuned in `.streamlit/config.toml` fo
 - **Python 3.10+** (the app is routinely used with **Python 3.12**; any recent 3.x should work).
 - Packages listed in **`requirements.txt`**:
 
-  `streamlit`, `plotly`, `pandas`, `numpy`, `scikit-learn`, `openpyxl`, `google-generativeai`
+  `streamlit`, `plotly`, `pandas`, `numpy`, `scikit-learn`, `openpyxl`, `google-generativeai`, `reportlab`
 
 **Optional — AI peer recommendations (How Can Cities Improve?)** Set **`GOOGLE_API_KEY`** / **`GEMINI_API_KEY`** via **`frontend/.streamlit/secrets.toml`** locally (see **§4b**), the host environment, or Streamlit Cloud **Secrets**. Optional **`GEMINI_MODEL`** (default **`gemini-2.5-flash`**).
 
@@ -59,12 +59,14 @@ pip install -r requirements.txt
 
 ### 4. Add the data files
 
-Place these Excel workbooks **next to `dashboard.py`** (same folder as this README):
+Place the main Excel workbooks **next to `dashboard.py`** (same folder as this README):
 
 | File | Role |
 |------|------|
 | **`midwest data (1).xlsx`** | Fiscal + sustainability fields for each municipality. The loader uses **`Sheet2`** if it exists, otherwise the **first sheet**. |
 | **`municipality_actions.xlsx`** | Climate actions. Preferred sheet name: **`Municipality Actions`**; otherwise the **first sheet**. Rows should include (at minimum) city, state, sector, action name, and action text. Only **Energy**, **Transport**, and **Waste** sectors are loaded for the actions views. |
+
+Implemented project data is loaded from **`../Extract financial data/Results/city_summary.csv`** and **`../Extract financial data/Results/all_projects.csv`** when those files are present. Those rows are filtered to city/state pairs that exist in the Midwest fiscal workbook.
 
 If the fiscal file is missing, the app stops with an error. If the actions file is missing, fiscal and typology views still work; action-heavy tabs show a clear notice.
 
@@ -90,10 +92,10 @@ Streamlit prints a local URL (usually `http://localhost:8501`). Open it in your 
 
 ## How to use the app
 
-1. In the **sidebar**, under **Compare cities**, pick **State** and **City** for **City A** and **City B** (used when you are comparing two places).
-2. Under **Dashboard view**, choose **Compare City A & City B** (default), **City A only**, **City B only**, or **Single city — Illinois, Michigan, Minnesota, or Wisconsin**. The last option shows **Focus state** and **Focus city** dropdowns (only those four states). **Single-city modes** show that municipality alone on **every** tab (typology highlight, profiles, actions, peer improvement, etc.).
-3. Use **Map options** to toggle bubble scaling, labels, quadrant shading, and state highlighting.
-4. Open **How Can Cities Improve?** (second tab, next to **About**) for peer benchmarks; in single-city mode there is one panel (no City A / B sub-tabs). Expand **How is Overall Fiscal Health calculated?** for the fiscal index, and **How are recommendations for … generated?** (under each city’s charts) for the rules behind suggested actions.
+1. Start on the **About** page. It explains the fiscal typology and what the dashboard is comparing.
+2. Click **Continue to state explorer**, then choose **Illinois**, **Michigan**, **Minnesota**, or **Wisconsin**. Review the cluster explanations and the sustainability scores for cities in that state.
+3. The map display options live beside the state typology map, not in the sidebar. Click **Continue to city analysis** when you are ready to pick a city.
+4. In **City analysis**, choose either **Single city** or **Compare two cities**; comparison cities are restricted to the same selected state. Then use **City Profiles**, **Actions Explorer**, and **How Can Cities Improve?**. The recommendation tab uses selected city data plus benchmark peer data for Gemini-generated suggestions when a key is configured, so treat those outputs as discussion starters rather than final policy advice.
 
 ---
 
