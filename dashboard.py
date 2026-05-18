@@ -1805,7 +1805,10 @@ def render_improvement_benchmark_for_city(
         if st.button(
             "Generate peer-based recommendations",
             key=f"btn_{gemini_key}",
-            help="Calls Google Gemini when GOOGLE_API_KEY or GEMINI_API_KEY is set (environment or Streamlit secrets).",
+            help=(
+                "Uses the selected city, same-state benchmark, rubric scores, fiscal context, "
+                "and action/project evidence to draft discussion-oriented recommendations."
+            ),
         ):
             try:
                 prompt = _gemini_build_peer_prompt(peer_payload)
