@@ -170,32 +170,13 @@ Because it is an average of standardized columns, most cities land in a **narrow
 
 
 # ── About page (methodology + typology definition) ───────────────────────────
-ABOUT_PAGE_MD = """
+ABOUT_PAGE_INTRO = """
 ### Municipal Fiscal & Sustainability Dashboard
 
 This dashboard is designed to help municipalities understand how **financial capacity**, **sustainability readiness**, and **climate action activity** fit together. It brings fiscal indicators, sustainability rubric scores, planned climate actions, implemented project records, and peer-learning recommendations into one guided workflow.
+""".strip()
 
----
-
-### What You Can Do
-
-1. **Start with a state-level view**  
-   Choose Illinois, Michigan, Minnesota, or Wisconsin to see how cities in that state are distributed across fiscal clusters and sustainability score ranges.
-
-2. **Understand city clusters**  
-   Cities are grouped using two fiscal dimensions: **long-term liability** and **liquidity**. The goal is not to label cities as “good” or “bad,” but to show their relative position among peers.
-
-3. **Select one or two cities**  
-   After selecting a state, choose a single city or compare two cities from that same state. The dashboard then shows profiles, actions, implemented projects, and improvement ideas for those selections.
-
-4. **Review planned and implemented work**  
-   The Actions Explorer separates **planned actions** from sustainability reports and **implemented projects** from financial project records, grouped by **Energy**, **Transport**, and **Waste**.
-
-5. **Generate peer-based recommendations**  
-   The recommendation section finds a same-state benchmark peer with similar Overall Fiscal Health and a higher sustainability score. Gemini can then generate discussion-oriented recommendations from the data sent to it.
-
----
-
+ABOUT_PAGE_MD = """
 ### How The Fiscal Clusters Work
 
 The state explorer uses a 2×2 fiscal typology:
@@ -216,15 +197,6 @@ These are **analytical peer groups**, not credit ratings, legal judgments, or of
 
 ---
 
-### Data Used
-
-- **Fiscal and sustainability data** come from the Midwest municipal fiscal workbook.
-- **Planned actions** come from municipal sustainability action records.
-- **Implemented projects** come from financial project extraction files and are matched only to cities that also exist in the Midwest fiscal dataset.
-- **Peer recommendations** are AI-generated from the selected city, benchmark city, rubric scores, fiscal context, and action/project evidence.
-
----
-
 ### How To Interpret Results
 
 Use this dashboard as a **decision-support and discussion tool**. It helps identify peer patterns, action gaps, and possible next steps, but it does not replace local policy review, engineering analysis, financial advising, or legal judgment.
@@ -233,8 +205,67 @@ Use this dashboard as a **decision-support and discussion tool**. It helps ident
 
 ### Start Exploring
 
-Click **Continue to state explorer** below to begin with a state-level view, then select a city or two-city comparison for deeper analysis.
+Use the sidebar — **State level analysis** to review clusters first, or **City level analysis** to pick a state and city directly.
 """.strip()
+
+ABOUT_DATA_SOURCES_HTML = """
+<div class="info-banner" style="border-left-color:#60a5fa;margin:12px 0 14px">
+<b>Sustainability reports (public, from 2020 onward)</b><br>
+We use <b>publicly available municipal sustainability reports</b> that cities published from
+<b>2020</b> forward. Those reports feed the <b>sustainability rubric scores</b> in this dashboard.
+<b>Planned actions</b> — Energy, Transport, and Waste — were <b>extracted</b> from the text of those reports.
+</div>
+<div class="info-banner" style="border-left-color:#fbbf24;margin:12px 0 14px">
+<b>Financial reports (latest available per city)</b><br>
+<b>Fiscal health</b>, typology clusters, and related indicators come from each city’s
+<b>latest available financial report</b> in our Midwest dataset. <b>Implemented projects</b> in Energy,
+Transport, and Waste were also <b>extracted</b> from those financial filings.
+</div>
+""".strip()
+
+GUIDE_STATE_MD = """
+- Pick a **state** and see how its cities fall into four peer groups.
+- In **State fiscal typology**, review the scatter plot, then cluster score boxes.
+- Scroll to **City scores by cluster** for per-city sustainability bars.
+- Use the sidebar **City level analysis** button when you want to choose one or two cities.
+""".strip()
+
+GUIDE_CITY_MD = """
+- Pick a **state**, then choose **one city** or **compare two** from that state.
+- Open **City Profiles** for scores and fiscal context.
+- Open **Actions Explorer** for **planned** report actions and **completed** projects (Energy, Transport, Waste).
+- Open **How Can Cities Improve?** for peer learning and **Generate peer-based recommendations** (Gemini).
+""".strip()
+
+GUIDE_PROFILES_MD = """
+- Read sustainability score, overall fiscal health, and which peer cluster the city is in.
+- Use this view to understand the city before reviewing actions or peer ideas.
+""".strip()
+
+GUIDE_ACTIONS_MD = """
+- Compare **planned** vs **implemented** sector pies side by side, then use the dropdown for action and project lists.
+- Filter by **Energy**, **Transport**, or **Waste** and download planned-action lists if needed.
+""".strip()
+
+GUIDE_REC_MD = """
+- We find a **same-state peer** with similar fiscal health and a **higher sustainability score**.
+- Review the peer profile, then generate **discussion-style recommendations** (AI-assisted, for planning only).
+""".strip()
+
+GUIDED_VIEW_PROFILES = "City Profiles"
+GUIDED_VIEW_ACTIONS = "Actions Explorer"
+GUIDED_VIEW_REC = "How Can Cities Improve?"
+GUIDED_VIEWS = [GUIDED_VIEW_PROFILES, GUIDED_VIEW_ACTIONS, GUIDED_VIEW_REC]
+
+
+def _render_what_you_can_do_here(body_md: str) -> None:
+    st.markdown(
+        '<div class="info-banner" style="border-left-color:#60a5fa">'
+        "<b>What you can do here</b></div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(body_md)
+
 
 # ── Short definitions for Streamlit `help=` (?) and KPI hover titles ─────────
 HELP: dict[str, str] = {
@@ -248,7 +279,7 @@ HELP: dict[str, str] = {
     "map_labels": "Shows every city name on the map (can look crowded). Hover still works when off.",
     "map_shade": "Light background colors match the four quadrants split by the dashed median lines.",
     "map_highlight": "Cities outside the chosen state(s) fade so your selection stands out.",
-    "t1_map_states": "State explorer: plot dots for the selected state. Dashed medians still use every city in your upload.",
+    "t1_map_states": "State level analysis: plot dots for the selected state. Dashed medians still use every city in your upload.",
     "sus_cluster": "Same 2×2 typology group as the map (median split on long-term pressure axis × liquidity axis).",
     "sus_state": "Limit the bar chart to one state, or show all states in the list.",
     "sector_filter": "Actions data only includes Energy, Transport, and Waste in this app.",
@@ -319,6 +350,20 @@ html, body, [class*="css"] {
 
 [data-testid="stSidebar"] .block-container {
     padding-top: 1.5rem;
+}
+
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {
+    font-weight: 600;
+    color: #f8fafc !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary:hover {
+    color: #93c5fd !important;
 }
 
 /* ── Typography ───────────────────────────────────────── */
@@ -405,6 +450,23 @@ p, li, label, span, div {
 .bq4 {
     background: rgba(248,113,113,.2);
     color: #f87171;
+}
+
+/* ── Gemini peer recommendations button (resilient green) ── */
+div[class*="st-key-btn_peer_gemini_recs"] button {
+    background: #34d399 !important;
+    border: 1px solid #2dd4a0 !important;
+    color: #041018 !important;
+    font-weight: 600 !important;
+}
+div[class*="st-key-btn_peer_gemini_recs"] button:hover {
+    background: #6ee7b7 !important;
+    border-color: #6ee7b7 !important;
+    color: #041018 !important;
+}
+div[class*="st-key-btn_peer_gemini_recs"] button:focus-visible {
+    outline: 2px solid #6ee7b7 !important;
+    outline-offset: 2px;
 }
 
 /* ── Metric row ───────────────────────────────────────── */
@@ -1273,6 +1335,19 @@ def _gemini_build_peer_prompt(payload: dict) -> str:
     )
 
 
+def _generate_peer_gemini_recommendations(gemini_key: str, peer_payload: dict) -> None:
+    """Run Gemini for peer recommendations and store result in session state."""
+    try:
+        prompt = _gemini_build_peer_prompt(peer_payload)
+        use_key = _resolve_gemini_api_key()
+        with st.spinner("Calling Gemini…"):
+            st.session_state[gemini_key] = _gemini_generate_peer_recommendations(prompt, use_key)
+        st.session_state.pop(f"{gemini_key}_err", None)
+    except Exception as exc:  # noqa: BLE001 — surface API/config errors in UI
+        st.session_state[gemini_key] = None
+        st.session_state[f"{gemini_key}_err"] = str(exc)
+
+
 def _gemini_generate_peer_recommendations(prompt: str, api_key: str) -> str:
     try:
         import google.generativeai as genai  # type: ignore[import-untyped]
@@ -1805,20 +1880,13 @@ def render_improvement_benchmark_for_city(
         if st.button(
             "Generate peer-based recommendations",
             key=f"btn_{gemini_key}",
+            type="primary",
             help=(
                 "Uses the selected city, same-state benchmark, rubric scores, fiscal context, "
                 "and action/project evidence to draft discussion-oriented recommendations."
             ),
         ):
-            try:
-                prompt = _gemini_build_peer_prompt(peer_payload)
-                use_key = _resolve_gemini_api_key()
-                with st.spinner("Calling Gemini…"):
-                    st.session_state[gemini_key] = _gemini_generate_peer_recommendations(prompt, use_key)
-                st.session_state.pop(f"{gemini_key}_err", None)
-            except Exception as exc:  # noqa: BLE001 — surface API/config errors in UI
-                st.session_state[gemini_key] = None
-                st.session_state[f"{gemini_key}_err"] = str(exc)
+            _generate_peer_gemini_recommendations(gemini_key, peer_payload)
         err_key = f"{gemini_key}_err"
         if st.session_state.get(err_key) and not st.session_state.get(gemini_key):
             st.error(st.session_state[err_key])
@@ -1868,8 +1936,13 @@ with st.sidebar:
     )
     st.divider()
 
-    st.markdown("### Data source")
-    st.caption("Using fixed Excel files from the frontend folder.")
+    with st.expander("Data source", expanded=False):
+        st.caption("Using fixed Excel files from the frontend folder.")
+        st.markdown(
+            "- **Fiscal & sustainability:** Midwest municipal workbook  \n"
+            "- **Planned actions:** sustainability reports (2020+)  \n"
+            "- **Implemented projects:** latest financial reports",
+        )
 
 # ── Load fiscal data ──────────────────────────────────────────────────────────
 try:
@@ -1990,6 +2063,10 @@ GUIDED_CITY = "city"
 GUIDED_COMPARE_SINGLE = "single"
 GUIDED_COMPARE_TWO = "two"
 
+LABEL_HOME = "Home"
+LABEL_STATE_LEVEL = "State level analysis"
+LABEL_CITY_LEVEL = "City level analysis"
+
 
 def cities_for(state: str) -> list[str]:
     return sorted(df[df["State"] == state]["city"].dropna().unique().tolist())
@@ -2023,8 +2100,6 @@ _guided_city_init = cities_for(st.session_state["guided_state"])
 _default("guided_compare_mode", GUIDED_COMPARE_SINGLE)
 _default("guided_city_a", _first_or_blank(_guided_city_init))
 _default("guided_city_b", _second_or_first(_guided_city_init))
-
-
 def _sync_guided_cities_for_state() -> None:
     city_opts = cities_for(st.session_state["guided_state"])
     if st.session_state.get("guided_city_a") not in city_opts:
@@ -2038,6 +2113,11 @@ def _guided_state_changed() -> None:
     st.session_state["guided_step"] = GUIDED_STATE
 
 
+def _guided_city_step_state_changed() -> None:
+    """State changed on city analysis step — refresh city lists, stay on step 3."""
+    _sync_guided_cities_for_state()
+
+
 def _go_to_state_explorer() -> None:
     st.session_state["guided_step"] = GUIDED_STATE
 
@@ -2049,10 +2129,6 @@ def _go_to_city_selection() -> None:
 
 def _go_to_about() -> None:
     st.session_state["guided_step"] = GUIDED_ABOUT
-
-
-def _go_back_to_state() -> None:
-    st.session_state["guided_step"] = GUIDED_STATE
 
 
 def _go_back_one_step() -> None:
@@ -2091,30 +2167,33 @@ def get_city_projects(city: str, state: str) -> pd.DataFrame:
 
 def _render_guided_header(
     *,
-    selected_state: str,
+    guided_step: str,
+    selected_state: str = "",
     city1: str = "",
     city2: str = "",
     single_city_mode: bool = True,
 ) -> None:
     st.markdown("# Municipal Fiscal & Sustainability Dashboard")
-    if city1:
+    meta = f"{KPI_CITIES} cities &nbsp;·&nbsp; {KPI_STATES} states"
+    if guided_step == GUIDED_CITY and city1:
         if single_city_mode:
-            suffix = (
-                f'<b>Selected city:</b> <span style="color:#93c5fd">{city1}, {selected_state}</span>'
+            meta += (
+                f' &nbsp;·&nbsp; <b>Selected city:</b> '
+                f'<span style="color:#93c5fd">{city1}, {selected_state}</span>'
             )
         else:
-            suffix = (
-                f'Comparing <b style="color:#93c5fd">{city1}, {selected_state}</b>'
+            meta += (
+                f' &nbsp;·&nbsp; Comparing '
+                f'<b style="color:#93c5fd">{city1}, {selected_state}</b>'
                 f' &nbsp;vs&nbsp; <b style="color:#fbbf24">{city2}, {selected_state}</b>'
             )
-    elif selected_state:
-        suffix = f'<b>State explorer:</b> <span style="color:#93c5fd">{selected_state}</span>'
-    else:
-        suffix = "Start with the About page"
+    elif guided_step == GUIDED_STATE and selected_state:
+        meta += (
+            f' &nbsp;·&nbsp; <b>State:</b> '
+            f'<span style="color:#93c5fd">{selected_state}</span>'
+        )
     st.markdown(
-        f'<p style="color:#ffffff;font-size:.76rem;margin-top:-10px">'
-        f"{KPI_CITIES} cities &nbsp;·&nbsp; {KPI_STATES} states &nbsp;·&nbsp; {suffix}"
-        f"</p>",
+        f'<p style="color:#ffffff;font-size:.76rem;margin-top:-10px">{meta}</p>',
         unsafe_allow_html=True,
     )
 
@@ -2242,84 +2321,107 @@ def _render_state_cluster_scores(selected_state: str) -> None:
         st.plotly_chart(fig, width="stretch", key=f"guided_scores_{selected_state}_{quad}")
 
 
-def _render_state_sustainability_quartiles(selected_state: str) -> None:
+def _render_state_sustainability_by_cluster(selected_state: str) -> None:
     state_df = df[df["State"] == selected_state].copy()
     if state_df.empty or SUS_COL not in state_df.columns:
         return
 
-    scores = pd.to_numeric(state_df[SUS_COL], errors="coerce")
-    sub = state_df.loc[scores.notna(), ["city", "State", SUS_COL]].copy()
-    sub[SUS_COL] = scores.loc[scores.notna()].astype(float)
+    state_df[SUS_COL] = pd.to_numeric(state_df[SUS_COL], errors="coerce")
+    sub = state_df.loc[state_df[SUS_COL].notna(), ["city", "State", SUS_COL, "pca_2x2_type"]].copy()
     if sub.empty:
         return
 
-    st.markdown("### Sustainability score quartiles")
+    st.markdown("#### Sustainability scores by fiscal cluster")
+    st.caption(
+        "Each box summarizes sustainability scores for cities in the same typology cluster "
+        "(long-term liability vs liquidity), not score-based quartiles."
+    )
     q_col, exp_col = st.columns([2.6, 1])
     with exp_col:
         with st.expander("What does this plot mean?", expanded=False):
             st.markdown(
-                "This groups cities in the selected state into **four equal-sized score bands**.\n\n"
-                "- **Quartile 1**: lower-scoring cities in this state.\n"
-                "- **Quartile 4**: higher-scoring cities in this state.\n"
-                "- The **box** shows the middle spread of scores in that quartile.\n"
-                "- The **highlighted line/point** is the **median**, or typical city score in that quartile.\n\n"
-                "For municipalities, this helps show whether a city is near the lower, middle, or higher end "
-                "of sustainability performance within its own state."
+                "Cities are grouped by the **same fiscal typology clusters** used on the map "
+                "(Resilient, Stable, Pressured, Vulnerable)—based on **long-term liability** "
+                "and **liquidity**, not sustainability score rank.\n\n"
+                "- **Q1 · Resilient:** lower long-term liability, higher liquidity.\n"
+                "- **Q2 · Stable:** lower long-term liability, tighter liquidity.\n"
+                "- **Q3 · Pressured:** higher long-term liability, stronger liquidity.\n"
+                "- **Q4 · Vulnerable:** higher long-term liability, lower liquidity.\n\n"
+                "The **box** shows how sustainability scores spread within that cluster. "
+                "The **yellow diamond** is the **median** score for cities in the cluster.\n\n"
+                "Use this to compare sustainability performance **among cities with similar "
+                "fiscal positions**, not among equal-sized score bands."
             )
 
-    try:
-        sub["_quartile_num"] = pd.qcut(sub[SUS_COL], q=4, labels=False, duplicates="drop") + 1
-    except ValueError:
-        sub["_quartile_num"] = 1
-    sub["_quartile_num"] = pd.to_numeric(sub["_quartile_num"], errors="coerce").fillna(1).astype(int)
-    sub["_quartile"] = sub["_quartile_num"].map(lambda n: f"Quartile {int(n)}")
-
+    cluster_order: list[str] = []
     with q_col:
         fig = go.Figure()
-        quartiles = [f"Quartile {i}" for i in sorted(sub["_quartile_num"].unique())]
-        for q in quartiles:
-            qsub = sub[sub["_quartile"] == q]
+        for quad, (cluster_name, _, cluster_color) in QUAD_META.items():
+            qsub = sub[sub["pca_2x2_type"] == quad].copy()
+            if qsub.empty:
+                continue
+            cluster_order.append(cluster_name)
+            r, g, b = (
+                int(cluster_color[1:3], 16),
+                int(cluster_color[3:5], 16),
+                int(cluster_color[5:7], 16),
+            )
+            fill = f"rgba({r},{g},{b},.22)"
             fig.add_trace(go.Box(
-                x=[q] * len(qsub),
+                x=[cluster_name] * len(qsub),
                 y=qsub[SUS_COL],
-                name=q,
+                name=cluster_name,
                 boxpoints="all",
                 jitter=0.35,
                 pointpos=0,
-                marker=dict(size=7, color="#60a5fa", opacity=0.72),
-                line=dict(color="#93c5fd"),
-                fillcolor="rgba(96,165,250,.18)",
+                marker=dict(size=7, color=cluster_color, opacity=0.78),
+                line=dict(color=cluster_color),
+                fillcolor=fill,
                 hovertext=qsub["city"],
-                hovertemplate="<b>%{hovertext}</b><br>%{x}<br>Score: %{y:.1f}/48<extra></extra>",
+                hovertemplate=(
+                    "<b>%{hovertext}</b><br>"
+                    f"{cluster_name}<br>"
+                    "Score: %{y:.1f}/48<extra></extra>"
+                ),
                 showlegend=False,
             ))
             med = float(qsub[SUS_COL].median())
             fig.add_trace(go.Scatter(
-                x=[q],
+                x=[cluster_name],
                 y=[med],
                 mode="markers+text",
                 marker=dict(size=12, color="#fbbf24", symbol="diamond", line=dict(width=1, color="#ffffff")),
                 text=[f"Median {med:.1f}"],
                 textposition="top center",
                 textfont=dict(size=10, color="#fbbf24"),
-                hovertemplate=f"{q}<br>Median: {med:.1f}/48<extra></extra>",
+                hovertemplate=f"{cluster_name}<br>Median: {med:.1f}/48<extra></extra>",
                 showlegend=False,
             ))
+        if not cluster_order:
+            st.info("No typology clusters with sustainability scores for this state.")
+            return
         fig.update_layout(
             **base_chart_layout(height=360, margin=dict(l=45, r=20, t=20, b=45)),
-            xaxis=dict(title="Quartile", tickfont=dict(size=11, color="#ffffff"), gridcolor="#0f1e30"),
+            xaxis=dict(
+                title="Fiscal typology cluster",
+                tickfont=dict(size=10, color="#ffffff"),
+                gridcolor="#0f1e30",
+                categoryorder="array",
+                categoryarray=cluster_order,
+            ),
             yaxis=dark_axis(title="Sustainability score (/48)", range=[0, 48]),
         )
-        st.plotly_chart(fig, width="stretch", key=f"guided_quartile_box_{selected_state}")
+        st.plotly_chart(fig, width="stretch", key=f"guided_cluster_box_{selected_state}")
 
 
 def _render_state_typology_map(selected_state: str) -> None:
     state_df = df[df["State"] == selected_state].copy()
     if state_df.empty:
         return
-    st.markdown("### Fiscal typology map for this state")
+    st.markdown("#### State typology scatter plot")
     st.caption(
-        "This map groups cities by long-term liability and liquidity using peer-relative median lines."
+        "Each point is a city in this state. Position shows long-term liability (horizontal) and "
+        "liquidity (vertical) relative to peer medians (dashed lines)."
     )
     with st.expander("How are these clusters calculated?", expanded=False):
         st.markdown(
@@ -2405,8 +2507,19 @@ def _render_state_typology_map(selected_state: str) -> None:
     st.plotly_chart(fig, width="stretch", key=f"guided_typology_{selected_state}", config=PLOTLY_TYPOLOGY_CONFIG)
 
 
+def _render_state_typology_section(selected_state: str) -> None:
+    st.markdown("### State fiscal typology")
+    st.caption(
+        "How cities in this state are grouped by fiscal position, and how sustainability scores "
+        "vary within each cluster."
+    )
+    _render_state_typology_map(selected_state)
+    st.markdown("<br>", unsafe_allow_html=True)
+    _render_state_sustainability_by_cluster(selected_state)
+
+
 def _render_state_explorer(selected_state: str) -> None:
-    st.markdown("## Step 2: Choose a state and review city clusters")
+    st.caption("Choose a state and review how its cities group into fiscal clusters.")
     st.selectbox(
         "State",
         guided_states,
@@ -2418,17 +2531,15 @@ def _render_state_explorer(selected_state: str) -> None:
     _render_guided_kpis(selected_state)
     st.markdown("<br>", unsafe_allow_html=True)
     _render_cluster_explainer()
+    _render_state_typology_section(selected_state)
     _render_state_cluster_scores(selected_state)
-    _render_state_sustainability_quartiles(selected_state)
-    with st.expander("Show typology map for this state", expanded=False):
-        _render_state_typology_map(selected_state)
 
 
 def _render_city_selection(selected_state: str) -> tuple[str, str, bool]:
     city_opts = cities_for(selected_state)
     _sync_guided_cities_for_state()
-    st.markdown("## Select one city or compare two cities")
-    st.caption("City choices are restricted to the state you selected above.")
+    st.markdown("### Select one city or compare two cities")
+    st.caption("City choices are limited to the state selected above.")
     st.radio(
         "Analysis mode",
         [GUIDED_COMPARE_SINGLE, GUIDED_COMPARE_TWO],
@@ -2451,24 +2562,35 @@ def _render_city_selection(selected_state: str) -> tuple[str, str, bool]:
 
 
 with st.sidebar:
-    st.markdown("## Navigation")
     current_step = st.session_state.get("guided_step", GUIDED_ABOUT)
     step_label = {
-        GUIDED_ABOUT: "1. About",
-        GUIDED_STATE: "2. State explorer",
-        GUIDED_CITY: "3. City analysis",
-    }.get(current_step, "1. About")
-    st.caption(f"Current step: **{step_label}**")
-    st.button("Return home", key="nav_home", on_click=_go_to_about, width="stretch")
-    st.button(
-        "State explorer",
-        key="nav_state",
-        on_click=_go_to_state_explorer,
-        type="primary" if current_step == GUIDED_ABOUT else "secondary",
-        width="stretch",
-    )
-    if current_step == GUIDED_CITY:
-        st.button("City analysis", key="nav_city", on_click=_go_to_city_selection, width="stretch")
+        GUIDED_ABOUT: LABEL_HOME,
+        GUIDED_STATE: LABEL_STATE_LEVEL,
+        GUIDED_CITY: LABEL_CITY_LEVEL,
+    }.get(current_step, LABEL_HOME)
+    with st.expander(f"Navigation · {step_label}", expanded=True):
+        st.caption("Click a section to open it. Collapse this panel anytime using the arrow above.")
+        st.button(
+            LABEL_HOME,
+            key="nav_home",
+            on_click=_go_to_about,
+            type="primary",
+            width="stretch",
+        )
+        st.button(
+            LABEL_STATE_LEVEL,
+            key="nav_state",
+            on_click=_go_to_state_explorer,
+            type="primary",
+            width="stretch",
+        )
+        st.button(
+            LABEL_CITY_LEVEL,
+            key="nav_city",
+            on_click=_go_to_city_selection,
+            type="primary",
+            width="stretch",
+        )
 
 
 selected_state = st.session_state["guided_state"]
@@ -2486,6 +2608,7 @@ p1_impl = get_city_projects(city1, selected_state)
 p2_impl = get_city_projects(city2, selected_state)
 
 _render_guided_header(
+    guided_step=st.session_state.get("guided_step", GUIDED_ABOUT),
     selected_state=selected_state,
     city1=city1 if st.session_state.get("guided_step") == GUIDED_CITY else "",
     city2=city2,
@@ -2495,30 +2618,49 @@ _render_guided_header(
 if st.session_state["guided_step"] == GUIDED_ABOUT:
     st.markdown(
         '<div class="info-banner" style="border-left-color:#60a5fa">'
-        "<b>Next step:</b> Click the blue <b>State explorer</b> button to choose a state "
-        "and review city clusters before selecting cities."
+        f"<b>Next step:</b> Open <b>{LABEL_STATE_LEVEL}</b> to review clusters, or "
+        f"<b>{LABEL_CITY_LEVEL}</b> to pick a state and city and start exploring."
         "</div>",
         unsafe_allow_html=True,
     )
-    st.button("State explorer", type="primary", on_click=_go_to_state_explorer)
+    home_nav1, home_nav2 = st.columns(2)
+    with home_nav1:
+        st.button(LABEL_STATE_LEVEL, type="primary", on_click=_go_to_state_explorer, width="stretch")
+    with home_nav2:
+        st.button(LABEL_CITY_LEVEL, type="primary", on_click=_go_to_city_selection, width="stretch")
+    st.markdown("---")
+    st.markdown(ABOUT_PAGE_INTRO)
+    st.markdown("### Where The Data Comes From")
+    st.markdown(ABOUT_DATA_SOURCES_HTML, unsafe_allow_html=True)
+    st.markdown(
+        "- **Planned vs implemented:** **Planned actions** (Energy, Transport, Waste) were "
+        "**extracted** from public **sustainability reports**; **implemented projects** were "
+        "**extracted** from each city’s **latest available financial report**.\n"
+        "- **Peer recommendations** are optional and AI-generated from city, benchmark, rubric, "
+        "fiscal, and action/project context.",
+    )
     st.markdown("---")
     st.markdown(ABOUT_PAGE_MD)
-    st.button("Continue to state explorer", type="primary", on_click=_go_to_state_explorer)
-    st.markdown("<br>", unsafe_allow_html=True)
     st.stop()
 
 if st.session_state["guided_step"] == GUIDED_STATE:
+    st.markdown(f"## {LABEL_STATE_LEVEL}")
     st.button("← Back to home", on_click=_go_to_about)
-    st.button("Continue to city analysis", type="primary", on_click=_go_to_city_selection)
-    st.markdown("---")
+    _render_what_you_can_do_here(GUIDE_STATE_MD)
     _render_state_explorer(selected_state)
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.button("Continue to city analysis", on_click=_go_to_city_selection)
     st.stop()
 
-st.markdown("## Step 3: City analysis")
-st.button("← Back to state explorer", on_click=_go_back_to_state)
-st.caption("Change the selected city or same-state comparison city here if needed.")
+st.markdown(f"## {LABEL_CITY_LEVEL}")
+st.button("← Back to home", on_click=_go_to_about)
+_render_what_you_can_do_here(GUIDE_CITY_MD)
+st.selectbox(
+    "State",
+    guided_states,
+    key="guided_state",
+    on_change=_guided_city_step_state_changed,
+    help=HELP["state_pick"],
+)
+selected_state = st.session_state["guided_state"]
 city1, city2, single_city_mode = _render_city_selection(selected_state)
 r1 = get_row(city1, selected_state)
 r2 = get_row(city2, selected_state)
@@ -2530,13 +2672,11 @@ p2_impl = get_city_projects(city2, selected_state)
 st.divider()
 _render_guided_kpis(selected_state, r1, r2, single_city_mode=single_city_mode)
 
-profile_tab, actions_tab, rec_tab = st.tabs([
-    "City Profiles",
-    "Actions Explorer",
-    "How Can Cities Improve?",
-])
+st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
+profile_tab, actions_tab, rec_tab = st.tabs(GUIDED_VIEWS)
 
 with profile_tab:
+    _render_what_you_can_do_here(GUIDE_PROFILES_MD)
     if single_city_mode:
         if r1 is not None:
             render_full_profile(r1, "#93c5fd", fin_avail, "guided_a")
@@ -2556,75 +2696,86 @@ with profile_tab:
                 st.warning(f"**{city2}, {selected_state}** not found in the dataset.")
 
 with actions_tab:
-    if df_act is None:
-        st.info(
-            "The Climate Actions Excel file is not available, so action lists cannot be shown.",
-            icon="⚡",
-        )
-    else:
-        total_a1 = len(a1)
-        total_a2 = len(a2)
-        action_view = st.selectbox(
-            "Action type",
-            ["Planned actions", "Implemented projects"],
-            key="guided_action_view",
-            help="Switch between planned sustainability-report actions and implemented financial-record projects.",
-        )
+    _render_what_you_can_do_here(GUIDE_ACTIONS_MD)
+    total_a1 = len(a1) if df_act is not None else 0
+    total_a2 = len(a2) if df_act is not None else 0
 
-        if action_view == "Planned actions":
-            st.markdown("### Planned actions by sector")
-            s1 = (
-                a1["sector"].value_counts().reindex(FOCUS_SECTORS, fill_value=0)
-                if not a1.empty and "sector" in a1.columns
-                else pd.Series(0, index=FOCUS_SECTORS)
+    st.markdown("### Planned vs implemented")
+    st.caption(
+        "Side-by-side sector split: sustainability-report **planned actions** (left) vs "
+        "financial-record **implemented projects** (right)."
+    )
+    plan_pie_col, impl_pie_col = st.columns(2)
+    with plan_pie_col:
+        st.markdown("#### Planned actions")
+        if df_act is None:
+            st.info("Planned actions file is not available.", icon="⚡")
+        elif single_city_mode:
+            render_focus_sector_pie(
+                a1,
+                f"{city1}, {selected_state}",
+                "#93c5fd",
+                "guided_plan_pie_a",
+                item_label="actions",
             )
-            s2 = (
-                a2["sector"].value_counts().reindex(FOCUS_SECTORS, fill_value=0)
-                if not a2.empty and "sector" in a2.columns
-                else pd.Series(0, index=FOCUS_SECTORS)
+        else:
+            render_focus_sector_pie(
+                a1,
+                f"{city1}, {selected_state}",
+                "#93c5fd",
+                "guided_plan_pie_a",
+                item_label="actions",
             )
-            fig_sec = go.Figure()
-            if single_city_mode:
-                fig_sec.add_trace(go.Bar(
-                    name=f"{city1}, {selected_state}",
-                    x=FOCUS_SECTORS,
-                    y=s1.values,
-                    marker_color="#93c5fd",
-                    opacity=0.85,
-                    text=s1.values,
-                    textposition="outside",
-                    textfont=dict(size=9, color="#93c5fd"),
-                ))
-                fig_sec.update_layout(
-                    **base_chart_layout(height=290, margin=dict(l=35, r=15, t=20, b=45)),
-                    yaxis=dark_axis(title="Number of actions"),
-                    xaxis=dict(tickfont=dict(size=11), gridcolor="#0f1e30"),
-                )
-                st.plotly_chart(fig_sec, width="stretch", key="guided_sec_bar_single")
-            else:
-                for vals, nm, col_hex in [
-                    (s1.values, city1, "#93c5fd"),
-                    (s2.values, city2, "#fbbf24"),
-                ]:
-                    fig_sec.add_trace(go.Bar(
-                        name=nm,
-                        x=FOCUS_SECTORS,
-                        y=vals,
-                        marker_color=col_hex,
-                        opacity=.85,
-                        text=vals,
-                        textposition="outside",
-                        textfont=dict(size=9, color=col_hex),
-                    ))
-                fig_sec.update_layout(
-                    **base_chart_layout(height=290, margin=dict(l=35, r=15, t=20, b=45)),
-                    barmode="group",
-                    yaxis=dark_axis(title="Number of actions"),
-                    xaxis=dict(tickfont=dict(size=11), gridcolor="#0f1e30"),
-                )
-                st.plotly_chart(fig_sec, width="stretch", key="guided_sec_bar")
+            render_focus_sector_pie(
+                a2,
+                f"{city2}, {selected_state}",
+                "#fbbf24",
+                "guided_plan_pie_b",
+                item_label="actions",
+            )
+    with impl_pie_col:
+        st.markdown("#### Implemented projects")
+        if df_projects is None:
+            st.info("Implemented project extracts are not available.")
+        elif single_city_mode:
+            render_focus_sector_pie(
+                p1_impl,
+                f"{city1}, {selected_state}",
+                "#93c5fd",
+                "guided_impl_pie_a",
+                item_label="projects",
+            )
+        else:
+            render_focus_sector_pie(
+                p1_impl,
+                f"{city1}, {selected_state}",
+                "#93c5fd",
+                "guided_impl_pie_a",
+                item_label="projects",
+            )
+            render_focus_sector_pie(
+                p2_impl,
+                f"{city2}, {selected_state}",
+                "#fbbf24",
+                "guided_impl_pie_b",
+                item_label="projects",
+            )
 
-            st.divider()
+    st.divider()
+    action_view = st.selectbox(
+        "View details for",
+        ["Planned actions", "Implemented projects"],
+        key="guided_action_view",
+        help="Choose which list and charts to show below the comparison pies.",
+    )
+
+    if action_view == "Planned actions":
+        if df_act is None:
+            st.info(
+                "The Climate Actions Excel file is not available, so planned action lists cannot be shown.",
+                icon="⚡",
+            )
+        else:
             sel_secs = st.multiselect(
                 "Filter by sector",
                 FOCUS_SECTORS,
@@ -2675,62 +2826,44 @@ with actions_tab:
                         list_state_key="guided_actions_city_b",
                     )
 
+    else:
+        if df_projects is None:
+            st.info("Implemented project extracts are not available.")
         else:
-            st.markdown("### Implemented projects from financial records")
-            if df_projects is None:
-                st.info("Implemented project extracts are not available.")
-            else:
-                pi1, pi2 = st.columns(2) if not single_city_mode else (st.container(), None)
-                with pi1:
-                    render_focus_sector_pie(
-                        p1_impl,
-                        f"{city1}, {selected_state}",
-                        "#93c5fd",
-                        "guided_impl_pie_a",
-                        item_label="projects",
-                    )
-                if not single_city_mode and pi2 is not None:
-                    with pi2:
-                        render_focus_sector_pie(
-                            p2_impl,
-                            f"{city2}, {selected_state}",
-                            "#fbbf24",
-                            "guided_impl_pie_b",
-                            item_label="projects",
-                        )
-
-                impl_secs = st.multiselect(
-                    "Filter implemented projects by sector",
-                    FOCUS_SECTORS,
-                    default=FOCUS_SECTORS,
-                    key="guided_impl_filter",
-                    help=HELP["sector_filter"],
+            st.markdown("### Implemented project lists")
+            impl_secs = st.multiselect(
+                "Filter implemented projects by sector",
+                FOCUS_SECTORS,
+                default=FOCUS_SECTORS,
+                key="guided_impl_filter",
+                help=HELP["sector_filter"],
+            )
+            if single_city_mode:
+                render_project_list(
+                    f"{city1}, {selected_state}",
+                    p1_impl,
+                    impl_secs,
+                    list_state_key="guided_projects_city_a",
                 )
-                if single_city_mode:
+            else:
+                ip1, ip2 = st.columns(2)
+                with ip1:
                     render_project_list(
                         f"{city1}, {selected_state}",
                         p1_impl,
                         impl_secs,
                         list_state_key="guided_projects_city_a",
                     )
-                else:
-                    ip1, ip2 = st.columns(2)
-                    with ip1:
-                        render_project_list(
-                            f"{city1}, {selected_state}",
-                            p1_impl,
-                            impl_secs,
-                            list_state_key="guided_projects_city_a",
-                        )
-                    with ip2:
-                        render_project_list(
-                            f"{city2}, {selected_state}",
-                            p2_impl,
-                            impl_secs,
-                            list_state_key="guided_projects_city_b",
-                        )
+                with ip2:
+                    render_project_list(
+                        f"{city2}, {selected_state}",
+                        p2_impl,
+                        impl_secs,
+                        list_state_key="guided_projects_city_b",
+                    )
 
 with rec_tab:
+    _render_what_you_can_do_here(GUIDE_REC_MD)
     if single_city_mode:
         st.markdown(
             '<div class="info-banner">'
@@ -3073,6 +3206,10 @@ T_about, T5, T4, T3, T1 = st.tabs([
 # TAB  ·  ABOUT
 # ──────────────────────────────────────────────────────────────────────────────
 with T_about:
+    st.markdown(ABOUT_PAGE_INTRO)
+    st.markdown("### Where The Data Comes From")
+    st.markdown(ABOUT_DATA_SOURCES_HTML, unsafe_allow_html=True)
+    st.markdown("---")
     st.markdown(ABOUT_PAGE_MD)
 
 # ──────────────────────────────────────────────────────────────────────────────
